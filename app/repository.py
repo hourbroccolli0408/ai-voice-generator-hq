@@ -53,8 +53,19 @@ class InsufficientCredits(Exception):
 
 class Repository:
     def __init__(self, database_url: str, starter_credits: int) -> None:
-        connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-        self.engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+        is_sqlite = database_url.startswith("sqlite")
+        connect_args = {"check_same_thread": False} if is_sqlite else {}
+        base_engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+        if is_sqlite:
+            self.engine = base_engine
+        else:
+            # Supabase exposes the public schema through its Data API by default. Keep
+            # authentication, jobs, and the credit ledger in an API-private schema.
+            with base_engine.begin() as connection:
+                connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS voiceforge_private")
+            self.engine = base_engine.execution_options(
+                schema_translate_map={None: "voiceforge_private"}
+            )
         self.starter_credits = starter_credits
         Base.metadata.create_all(self.engine)
 
