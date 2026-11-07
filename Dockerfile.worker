@@ -1,0 +1,19 @@
+FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VOICEFORGE_DEVICE=cuda \
+    VOICEFORGE_ENGINE=chatterbox
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY app ./app
+COPY worker ./worker
+RUN pip install --upgrade pip && pip install ".[worker]"
+
+CMD ["python", "worker/handler.py"]

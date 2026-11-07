@@ -1,0 +1,18 @@
+services:
+  voiceforge:
+    build: .
+    container_name: voiceforge
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VOICEFORGE_DATA_DIR: /app/data
+      VOICEFORGE_DEVICE: cpu
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - ./data:/app/data
+      - ./.cache/huggingface:/root/.cache/huggingface
+

@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d0f0e" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>AI Voice Generator HQ — Consent-first AI voiceovers</title>
+    <meta
+      name="description"
+      content="Create natural AI voiceovers from an authorized voice sample with transparent character-based pricing."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="AI Voice Generator HQ home">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i>
+          </span>
+          <span>AI Voice HQ</span>
+        </a>
+
+        <nav aria-label="Main navigation">
+          <button class="nav-item active" data-view="studio">
+            <span class="nav-icon">✦</span> Studio
+          </button>
+          <button class="nav-item" data-view="history">
+            <span class="nav-icon">◷</span> History
+            <span class="count" id="history-count">0</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="runtime-card">
+            <span class="runtime-dot"></span>
+            <div>
+              <strong id="runtime-label">Secure engine</strong>
+              <small id="runtime-detail">Checking runtime…</small>
+            </div>
+          </div>
+          <p class="privacy-note">Consent is required. Reference samples are deleted after generation.</p>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <button class="mobile-menu" aria-label="Open menu">☰</button>
+          <div class="eyebrow"><span></span> New generation</div>
+          <div class="account-actions">
+            <div class="local-badge"><b id="credit-balance">—</b> CREDITS</div>
+            <button type="button" class="signout-button hidden" id="signout-button">Sign out</button>
+          </div>
+        </header>
+
+        <section class="view active" id="studio-view">
+          <div class="hero-row">
+            <div>
+              <p class="kicker">VOICEOVER STUDIO</p>
+              <h1>Give your words<br />a voice worth hearing.</h1>
+              <p class="intro">
+                Clone an authorized voice from a short sample, then turn any script into
+                natural, watermarked speech on a secure GPU worker.
+              </p>
+            </div>
+            <div class="hero-orb" aria-hidden="true">
+              <div class="orb-wave">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+          </div>
+
+          <form id="generation-form">
+            <div class="workspace-grid">
+              <section class="panel reference-panel">
+                <div class="panel-heading">
+                  <div class="step-number">01</div>
+                  <div>
+                    <h2>Reference voice</h2>
+                    <p>Use a clean, expressive clip between 6 and 30 seconds.</p>
+                  </div>
+                </div>
+
+                <div class="drop-zone" id="drop-zone">
+                  <input
+                    type="file"
+                    id="reference-input"
+                    name="reference"
+                    accept="audio/*,.wav,.mp3,.m4a,.webm,.flac"
+                    hidden
+                  />
+                  <div class="upload-state" id="upload-state">
+                    <div class="upload-icon">↥</div>
+                    <strong>Drop your voice sample here</strong>
+                    <span>or click to browse · WAV, MP3, M4A, WebM</span>
+                  </div>
+                  <div class="file-state hidden" id="file-state">
+                    <div class="file-icon">♪</div>
+                    <div class="file-copy">
+                      <strong id="file-name">reference.wav</strong>
+                      <span id="file-meta">Audio sample ready</span>
+                    </div>
+                    <button type="button" id="remove-file" aria-label="Remove file">×</button>
+                  </div>
+                </div>
+
+                <div class="divider"><span>or record now</span></div>
+
+                <button type="button" class="record-button" id="record-button">
+                  <span class="record-dot"></span>
+                  <span id="record-label">Start recording</span>
+                  <time id="record-time">00:00</time>
+                </button>
+
+                <label class="consent-box">
+                  <input type="checkbox" id="consent" name="consent" />
+                  <span class="checkmark">✓</span>
+                  <span>
+                    I confirm this is my voice, or I have the speaker’s explicit permission
+                    to clone and use it.
+                  </span>
+                </label>
+              </section>
+
+              <section class="panel script-panel">
+                <div class="panel-heading">
+                  <div class="step-number">02</div>
+                  <div>
+                    <h2>Your script</h2>
+                    <p>Write naturally. Punctuation shapes pacing and delivery.</p>
+                  </div>
+                </div>
+
+                <div class="editor-wrap">
+                  <textarea
+                    id="script"
+                    name="text"
+                    maxlength="5000"
+                    placeholder="The first light of morning slipped quietly through the curtains…"
+                  ></textarea>
+                  <div class="editor-footer">
+                    <button type="button" id="sample-script">Use sample</button>
+                    <span><b id="char-count">0</b> / <span id="char-limit">5,000</span></span>
+                  </div>
+                </div>
+
+                <div class="control-row">
+                  <label>
+                    <span>Model</span>
+                    <select id="model" name="model"></select>
+                  </label>
+                  <label>
+                    <span>Language</span>
+                    <select id="language" name="language"></select>
+                  </label>
+                </div>
+
+                <details class="advanced">
+                  <summary>Fine-tune delivery <span>＋</span></summary>
+                  <div class="slider-grid">
+                    <label>
+                      <span>Expression <output id="exaggeration-value">50%</output></span>
+                      <input id="exaggeration" name="exaggeration" type="range" min="0" max="1" step="0.05" value="0.5" />
+                    </label>
+                    <label>
+                      <span>Voice guidance <output id="cfg-value">50%</output></span>
+                      <input id="cfg-weight" name="cfg_weight" type="range" min="0" max="1" step="0.05" value="0.5" />
+                    </label>
+                    <label>
+                      <span>Variation <output id="temperature-value">0.8</output></span>
+                      <input id="temperature" name="temperature" type="range" min="0.2" max="1.5" step="0.05" value="0.8" />
+                    </label>
+                  </div>
+                </details>
+              </section>
+            </div>
+
+            <div class="action-row">
+              <div class="estimate">
+                <span class="estimate-icon">≈</span>
+                <div><strong id="duration-estimate">~0 sec</strong><small>estimated audio</small></div>
+              </div>
+              <button type="submit" class="generate-button" id="generate-button">
+                <span>Generate voiceover</span><b>→</b>
+              </button>
+            </div>
+          </form>
+
+          <section class="result-card hidden" id="result-card" aria-live="polite">
+            <div class="result-status">
+              <span class="result-mark">✦</span>
+              <div><small>YOUR VOICEOVER</small><h2 id="result-title">Generating…</h2></div>
+              <span class="result-time" id="result-time"></span>
+            </div>
+            <div class="progress-track" id="progress-track"><i id="progress-bar"></i></div>
+            <p class="result-message" id="result-message">Preparing your reference voice.</p>
+            <div class="player hidden" id="player">
+              <button type="button" class="play-button" id="play-button" aria-label="Play">▶</button>
+              <canvas id="waveform" width="720" height="72"></canvas>
+              <time id="player-time">00:00</time>
+              <audio id="result-audio" preload="metadata"></audio>
+              <a class="download-button" id="download-button" href="#">Download WAV ↓</a>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="history-view">
+          <div class="history-header">
+            <div><p class="kicker">YOUR LIBRARY</p><h1>Generation history</h1></div>
+            <p>Private to your account.</p>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+
+        <footer>
+          <span>AI Voice Generator HQ · Consent first</span>
+          <span>Generated speech includes a provenance watermark</span>
+        </footer>
+      </main>
+    </div>
+
+    <div class="auth-overlay hidden" id="auth-overlay">
+      <form class="auth-card" id="auth-form">
+        <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="kicker">PRIVATE BETA</p>
+        <h2>Welcome to AI Voice HQ</h2>
+        <p>Sign in to use your credits and keep generations private.</p>
+        <label>Email<input type="email" id="auth-email" autocomplete="email" required /></label>
+        <label>Password<input type="password" id="auth-password" autocomplete="current-password" minlength="8" required /></label>
+        <button type="submit" class="generate-button"><span>Sign in</span><b>→</b></button>
+        <button type="button" class="auth-secondary" id="signup-button">Create beta account</button>
+        <small id="auth-message"></small>
+      </form>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
+

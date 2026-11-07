@@ -1,0 +1,42 @@
+[project]
+name = "voiceforge"
+version = "0.1.0"
+description = "A self-hosted, consent-first AI voiceover studio"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn[standard]==0.34.2",
+  "python-multipart==0.0.20",
+  "pydantic-settings==2.9.1",
+  "aiofiles==24.1.0",
+  "httpx==0.28.1",
+  "SQLAlchemy==2.0.40",
+  "PyJWT[crypto]==2.10.1",
+  "boto3==1.37.38",
+]
+
+[project.optional-dependencies]
+tts = [
+  "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git@ab55923c27757c90cfcc407baa57dc25a7d25217",
+]
+worker = [
+  "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git@ab55923c27757c90cfcc407baa57dc25a7d25217",
+  "runpod==1.7.13",
+]
+postgres = ["psycopg[binary]==3.2.6"]
+dev = [
+  "pytest==8.3.5",
+  "ruff==0.11.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["data*", "tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+

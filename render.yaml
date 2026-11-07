@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: ai-voice-generator-hq-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: VOICEFORGE_ENVIRONMENT
+        value: production
+      - key: VOICEFORGE_AUTH_MODE
+        value: supabase
+      - key: VOICEFORGE_WORKER_MODE
+        value: runpod
+      - key: VOICEFORGE_STORAGE_BACKEND
+        value: r2
+      - key: VOICEFORGE_DATABASE_URL
+        sync: false
+      - key: VOICEFORGE_SUPABASE_URL
+        sync: false
+      - key: VOICEFORGE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VOICEFORGE_RUNPOD_ENDPOINT_ID
+        sync: false
+      - key: VOICEFORGE_RUNPOD_API_KEY
+        sync: false
+      - key: VOICEFORGE_R2_ENDPOINT_URL
+        sync: false
+      - key: VOICEFORGE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: VOICEFORGE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: VOICEFORGE_R2_BUCKET
+        sync: false
