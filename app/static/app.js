@@ -82,6 +82,9 @@ async function initAuth() {
 }
 
 async function submitAuth(createAccount = false) {
+  const form = $("#auth-form");
+  if (!form.reportValidity()) return;
+
   const email = $("#auth-email").value.trim();
   const password = $("#auth-password").value;
   const message = $("#auth-message");
