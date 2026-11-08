@@ -66,8 +66,8 @@
               <p class="kicker">VOICEOVER STUDIO</p>
               <h1>Give your words<br />a voice worth hearing.</h1>
               <p class="intro">
-                Choose a ready-to-use voice or clone an authorized voice from a short sample,
-                then turn any script into natural, watermarked speech.
+                Choose a ready-to-use voice or clone an authorized voice, then turn any script
+                into natural, watermarked speech in one language or several at once.
               </p>
             </div>
             <div class="hero-orb" aria-hidden="true">
@@ -167,12 +167,33 @@
                   </div>
                 </div>
 
+                <div class="translate-card">
+                  <label class="translate-toggle">
+                    <input type="checkbox" id="translate-mode" />
+                    <span class="toggle-track"><i></i></span>
+                    <span><strong>Translate into multiple languages</strong><small>One script, up to 5 voiceovers.</small></span>
+                  </label>
+                  <div class="translate-options hidden" id="translate-options">
+                    <label>
+                      <span>Script language</span>
+                      <select id="source-language" name="source_language">
+                        <option value="auto">Auto-detect</option>
+                      </select>
+                    </label>
+                    <fieldset>
+                      <legend>Voiceover languages <small id="target-count">0 / 5 selected</small></legend>
+                      <div class="target-language-grid" id="target-languages"></div>
+                    </fieldset>
+                    <p id="translation-cost">Choose output languages to see the credit cost.</p>
+                  </div>
+                </div>
+
                 <div class="control-row">
                   <label id="model-control">
                     <span>Model</span>
                     <select id="model" name="model"></select>
                   </label>
-                  <label>
+                  <label id="language-control">
                     <span>Language</span>
                     <select id="language" name="language"></select>
                   </label>
@@ -201,7 +222,7 @@
             <div class="action-row">
               <div class="estimate">
                 <span class="estimate-icon">≈</span>
-                <div><strong id="duration-estimate">~0 sec</strong><small>estimated audio</small></div>
+                <div><strong id="duration-estimate">~0 sec</strong><small id="estimate-label">estimated audio</small></div>
               </div>
               <button type="submit" class="generate-button" id="generate-button">
                 <span>Generate voiceover</span><b>→</b>
@@ -218,6 +239,10 @@
             <div class="progress-track" id="progress-track"><i id="progress-bar"></i></div>
             <p class="result-message" id="result-message">Preparing your reference voice.</p>
             <div class="player hidden" id="player">
+              <label class="output-language hidden" id="output-language-control">
+                <span>Playing</span>
+                <select id="output-language"></select>
+              </label>
               <button type="button" class="play-button" id="play-button" aria-label="Play">▶</button>
               <canvas id="waveform" width="720" height="72"></canvas>
               <time id="player-time">00:00</time>

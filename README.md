@@ -1,12 +1,13 @@
 # AI Voice Generator HQ
 
-AI Voice Generator HQ is a consent-first AI voiceover service. Choose one of six ready-made
-voices or provide a 6–30 second reference clip from an authorized speaker, paste a script,
-and it generates a downloadable, watermarked WAV.
+AI Voice Generator HQ is a consent-first AI voiceover service. Choose a ready-made voice or
+provide a 6–30 second reference clip from an authorized speaker, paste a script, and generate
+downloadable, watermarked WAVs in one language or up to five languages at once.
 
-The default backend uses **Kokoro 82M** for ready-made English voices and **Chatterbox
-Multilingual V3** for 23-language zero-shot voice cloning. Turbo and Nano are included for
-faster English cloning. Generated audio receives a PerTh provenance watermark.
+The default backend uses **Kokoro 82M** for ready-made English voices, **Chatterbox
+Multilingual V3** for the Global Narrator and 23-language zero-shot voice cloning, and
+**M2M100 418M** for 100-language script translation. Turbo and Nano are included for faster
+English cloning. Generated audio receives a PerTh provenance watermark.
 
 > Only clone your own voice or a voice you have explicit permission to use. VoiceForge
 > requires a consent attestation whenever a user clones a voice. Production mode includes Supabase
@@ -16,7 +17,8 @@ faster English cloning. Generated audio receives a PerTh provenance watermark.
 ## What is included
 
 - Browser recording and drag-and-drop audio uploads
-- Six ready-made American and British voices that need no recording
+- Six ready-made American and British voices plus a multilingual Global Narrator
+- Automatic source-language detection and up to five translated voiceovers per job
 - Multilingual V3, English Turbo, and CPU-friendly Nano model choices
 - Long-script chunking and a single-worker generation queue
 - Local history, playback, and WAV downloads
@@ -25,7 +27,7 @@ faster English cloning. Generated audio receives a PerTh provenance watermark.
 - Built-in synthetic-audio watermarking from Chatterbox
 - A mock engine for fast UI development without downloading model weights
 - Supabase-compatible authentication and Postgres persistence
-- Character credits with automatic failure refunds
+- Character credits (source characters × output languages) with automatic failure refunds
 - Optional private Cloudflare R2 audio storage
 - A separate RunPod Serverless GPU worker
 

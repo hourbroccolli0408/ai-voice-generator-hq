@@ -45,6 +45,24 @@ def handler(event: dict) -> dict:
         except Exception as exc:
             return {"error": str(exc)}
 
+    task = payload.get("task", "generate")
+    if task == "translate":
+        required = {"text", "source_language", "target_languages"}
+        missing = sorted(required - payload.keys())
+        if missing:
+            return {"error": f"Missing input: {', '.join(missing)}"}
+        try:
+            translations = engine.translate(
+                str(payload["text"]),
+                str(payload["source_language"]),
+                [str(language) for language in payload["target_languages"]],
+            )
+            return {"translations": translations}
+        except Exception as exc:
+            return {"error": str(exc)}
+    if task != "generate":
+        return {"error": "Unsupported task"}
+
     required = {"text", "model", "language"}
     missing = sorted(required - payload.keys())
     if missing:

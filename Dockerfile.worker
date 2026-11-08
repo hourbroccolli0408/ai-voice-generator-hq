@@ -28,6 +28,10 @@ RUN pip install --upgrade pip \
 # Keep ready-made voices independent of Hugging Face availability during a request.
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='hexgrad/Kokoro-82M', allow_patterns=['config.json', 'kokoro-v1_0.pth', 'voices/af_heart.pt', 'voices/af_bella.pt', 'voices/am_michael.pt', 'voices/bf_emma.pt', 'voices/bm_george.pt', 'voices/af_nicole.pt'])"
 
+# Bundle Meta's MIT-licensed 100-language translator so translation jobs do not
+# depend on a model download during a customer request.
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='facebook/m2m100_418M', revision='e5638106ad0ed9c7e55b757799357940956eda5e', allow_patterns=['config.json', 'generation_config.json', 'pytorch_model.bin', 'sentencepiece.bpe.model', 'special_tokens_map.json', 'tokenizer_config.json', 'vocab.json'])"
+
 # spacy-pkuseg hard-codes a five-second download timeout. Bundle its verified
 # model so cold-start generation never depends on a runtime GitHub download.
 COPY build_assets/spacy_ontonotes.zip /tmp/spacy_ontonotes.zip

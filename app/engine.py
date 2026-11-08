@@ -39,6 +39,18 @@ SUPPORTED_LANGUAGES = {
     "zh": "Chinese",
 }
 
+TRANSLATION_SOURCE_LANGUAGES = {
+    "af", "am", "ar", "ast", "az", "ba", "be", "bg", "bn", "br", "bs", "ca",
+    "ceb", "cs", "cy", "da", "de", "el", "en", "es", "et", "fa", "ff", "fi",
+    "fr", "fy", "ga", "gd", "gl", "gu", "ha", "he", "hi", "hr", "ht", "hu",
+    "hy", "id", "ig", "ilo", "is", "it", "ja", "jv", "ka", "kk", "km", "kn",
+    "ko", "lb", "lg", "ln", "lo", "lt", "lv", "mg", "mk", "ml", "mn", "mr",
+    "ms", "my", "ne", "nl", "no", "ns", "oc", "or", "pa", "pl", "ps", "pt",
+    "ro", "ru", "sd", "si", "sk", "sl", "so", "sq", "sr", "ss", "su", "sv",
+    "sw", "ta", "th", "tl", "tn", "tr", "uk", "ur", "uz", "vi", "wo", "xh",
+    "yi", "yo", "zh", "zu",
+}
+
 MODEL_OPTIONS = {
     "multilingual-v3": {
         "label": "Multilingual V3",
@@ -58,6 +70,13 @@ MODEL_OPTIONS = {
 }
 
 VOICE_OPTIONS = {
+    "global": {
+        "label": "Global Narrator",
+        "description": "Natural house voice for every supported language",
+        "accent": "Multilingual",
+        "engine": "chatterbox-default",
+        "languages": list(SUPPORTED_LANGUAGES),
+    },
     "heart": {
         "label": "Heart",
         "description": "Warm, natural American voice",
@@ -213,6 +232,8 @@ class ModelManager:
         self._model_name: str | None = None
         self._model = None
         self._lock = threading.Lock()
+        self._translator = None
+        self._translator_tokenizer = None
 
     @property
     def loaded_model(self) -> str | None:
@@ -291,6 +312,7 @@ class ModelManager:
 
         voice = VOICE_OPTIONS[options.voice]
         is_clone = voice["engine"] == "chatterbox"
+        is_chatterbox = voice["engine"] in {"chatterbox", "chatterbox-default"}
         if is_clone and reference_path is None:
             raise ValueError("A reference recording is required to clone a voice")
         if options.language not in voice["languages"]:
@@ -298,15 +320,22 @@ class ModelManager:
 
         chunks = split_text(text)
         with self._lock, torch.inference_mode():
-            model_name = options.model if is_clone else f"kokoro-{voice['language_code']}"
+            model_name = (
+                options.model
+                if is_clone
+                else "multilingual-v3"
+                if is_chatterbox
+                else f"kokoro-{voice['language_code']}"
+            )
             model = self._load(model_name)
             generated = []
             for index, chunk in enumerate(chunks, start=1):
-                if is_clone:
+                if is_chatterbox:
                     common = {
-                        "audio_prompt_path": str(reference_path),
                         "temperature": options.temperature,
                     }
+                    if reference_path is not None:
+                        common["audio_prompt_path"] = str(reference_path)
                     if options.model == "multilingual-v3":
                         wav = model.generate(
                             chunk,
@@ -327,7 +356,7 @@ class ModelManager:
                         if result_index < len(results) - 1:
                             generated.append(torch.zeros((1, int(24000 * 0.08))))
                 if index < len(chunks):
-                    sample_rate = model.sr if is_clone else 24000
+                    sample_rate = model.sr if is_chatterbox else 24000
                     generated.append(torch.zeros((1, int(sample_rate * 0.28))))
                 if progress:
                     progress(index, len(chunks))
@@ -335,8 +364,8 @@ class ModelManager:
             if not generated:
                 raise RuntimeError("The speech engine did not return any audio")
             combined = torch.cat(generated, dim=-1)
-            sample_rate = model.sr if is_clone else 24000
-            if not is_clone:
+            sample_rate = model.sr if is_chatterbox else 24000
+            if not is_chatterbox:
                 import perth
 
                 watermarker = perth.PerthImplicitWatermarker()
@@ -345,6 +374,59 @@ class ModelManager:
                 )
                 combined = torch.from_numpy(marked).reshape(1, -1)
             torchaudio.save(str(output_path), combined, sample_rate)
+
+    def translate(
+        self,
+        text: str,
+        source_language: str,
+        target_languages: list[str],
+    ) -> dict[str, str]:
+        import torch
+        from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
+
+        if source_language not in TRANSLATION_SOURCE_LANGUAGES:
+            raise ValueError("The detected source language is not supported")
+        invalid_targets = set(target_languages) - set(SUPPORTED_LANGUAGES)
+        if invalid_targets:
+            raise ValueError("One or more target languages are not supported")
+
+        with self._lock, torch.inference_mode():
+            if self._translator is None or self._translator_tokenizer is None:
+                self.device = self._resolve_device()
+                self._translator_tokenizer = M2M100Tokenizer.from_pretrained(
+                    "facebook/m2m100_418M"
+                )
+                dtype = torch.float16 if self.device == "cuda" else torch.float32
+                self._translator = M2M100ForConditionalGeneration.from_pretrained(
+                    "facebook/m2m100_418M", torch_dtype=dtype
+                ).to(self.device)
+                self._translator.eval()
+
+            tokenizer = self._translator_tokenizer
+            tokenizer.src_lang = source_language
+            chunks = split_text(text, max_chars=700)
+            translations = {language: [] for language in target_languages}
+            for chunk in chunks:
+                if source_language in translations:
+                    translations[source_language].append(chunk)
+                encoded = tokenizer(
+                    chunk,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=512,
+                ).to(self.device)
+                for language in target_languages:
+                    if language == source_language:
+                        continue
+                    generated = self._translator.generate(
+                        **encoded,
+                        forced_bos_token_id=tokenizer.get_lang_id(language),
+                        max_new_tokens=512,
+                    )
+                    translations[language].append(
+                        tokenizer.batch_decode(generated, skip_special_tokens=True)[0]
+                    )
+            return {language: " ".join(parts) for language, parts in translations.items()}
 
 
 class MockEngine:
@@ -375,6 +457,17 @@ class MockEngine:
                 audio.writeframesraw(struct.pack("<h", value))
         if progress:
             progress(1, 1)
+
+    def translate(
+        self,
+        text: str,
+        source_language: str,
+        target_languages: list[str],
+    ) -> dict[str, str]:
+        return {
+            language: text if language == source_language else f"[{language}] {text}"
+            for language in target_languages
+        }
 
 
 def create_engine(device: str, engine_name: str):

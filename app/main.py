@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from langdetect import DetectorFactory, LangDetectException, detect
 
 from .auth import get_current_user
 from .config import settings
@@ -18,6 +19,7 @@ from .dispatcher import create_generation_engine
 from .engine import (
     MODEL_OPTIONS,
     SUPPORTED_LANGUAGES,
+    TRANSLATION_SOURCE_LANGUAGES,
     VOICE_OPTIONS,
     GenerationOptions,
     normalize_reference,
@@ -33,6 +35,7 @@ engine = create_generation_engine()
 repository = Repository(settings.resolved_database_url, settings.starter_credits)
 audio_storage = AudioStorage()
 executor = ThreadPoolExecutor(max_workers=max(1, settings.workers))
+DetectorFactory.seed = 0
 
 
 @asynccontextmanager
@@ -62,7 +65,13 @@ def now_iso() -> str:
 
 def public_job(job: dict) -> dict:
     private = {"reference_path", "output_path", "audio_locator"}
-    return {key: value for key, value in job.items() if key not in private}
+    result = {key: value for key, value in job.items() if key not in private}
+    if isinstance(result.get("outputs"), list):
+        result["outputs"] = [
+            {key: value for key, value in output.items() if key not in private}
+            for output in result["outputs"]
+        ]
+    return result
 
 
 def update_job(job_id: str, **changes) -> dict:
@@ -119,6 +128,126 @@ def run_generation(
             reference_path.unlink(missing_ok=True)
 
 
+def run_multilingual_generation(
+    job_id: str,
+    user_id: str,
+    text: str,
+    source_language: str,
+    target_languages: list[str],
+    reference_path: Path | None,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    temperature: float,
+) -> None:
+    try:
+        job_dir = settings.jobs_dir / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        update_job(job_id, status="processing", stage="Translating your script", progress=8)
+        translations = engine.translate(text, source_language, target_languages)
+        outputs = []
+        total = len(target_languages)
+        for index, language in enumerate(target_languages, start=1):
+            translated_text = translations.get(language, "").strip()
+            if not translated_text:
+                raise RuntimeError(f"Translation returned no {language} text")
+            update_job(
+                job_id,
+                status="processing",
+                stage=(
+                    f"Creating {SUPPORTED_LANGUAGES[language]} voiceover "
+                    f"{index} of {total}"
+                ),
+                progress=15 + int(((index - 1) / total) * 78),
+            )
+            output_path = job_dir / f"voiceover-{language}.wav"
+            options = GenerationOptions(
+                "multilingual-v3",
+                language,
+                exaggeration,
+                cfg_weight,
+                temperature,
+                voice,
+            )
+            engine.generate(translated_text, reference_path, output_path, options)
+            locator = audio_storage.store(
+                output_path, f"voiceovers/{user_id}/{job_id}/{language}.wav"
+            )
+            outputs.append(
+                {
+                    "language": language,
+                    "language_label": SUPPORTED_LANGUAGES[language],
+                    "characters": len(translated_text),
+                    "text_preview": translated_text[:120]
+                    + ("…" if len(translated_text) > 120 else ""),
+                    "audio_locator": locator,
+                    "audio_url": f"/api/jobs/{job_id}/audio?language={language}",
+                    "download_name": f"ai-voice-{job_id[:8]}-{language}.wav",
+                }
+            )
+        update_job(
+            job_id,
+            status="completed",
+            stage="All languages ready",
+            progress=100,
+            completed_at=now_iso(),
+            outputs=outputs,
+            audio_url=f"/api/jobs/{job_id}/audio?language={target_languages[0]}",
+            download_name=outputs[0]["download_name"],
+        )
+    except Exception as exc:
+        logger.exception("Multilingual generation failed for job %s", job_id)
+        job = repository.get_job(job_id)
+        credits = int(job.get("credits", 0)) if job else 0
+        repository.refund(user_id, job_id, credits)
+        update_job(
+            job_id,
+            status="failed",
+            stage="Generation failed — credits refunded",
+            error=str(exc),
+            completed_at=now_iso(),
+        )
+    finally:
+        if reference_path is not None:
+            reference_path.unlink(missing_ok=True)
+
+
+def detect_source_language(text: str) -> str:
+    try:
+        language = detect(text)
+    except LangDetectException as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not detect the source language. Choose it manually.",
+        ) from exc
+    language = {"zh-cn": "zh", "zh-tw": "zh", "iw": "he"}.get(language, language)
+    if language not in TRANSLATION_SOURCE_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail="The detected source language is not supported. Choose it manually.",
+        )
+    return language
+
+
+def resolve_audio(job: dict, language: str | None) -> tuple[str, str]:
+    outputs = job.get("outputs") or []
+    if outputs:
+        selected = next(
+            (output for output in outputs if output.get("language") == language),
+            outputs[0] if language is None else None,
+        )
+        if selected is None:
+            raise HTTPException(status_code=404, detail="That language output is unavailable")
+        locator = selected.get("audio_locator") or selected.get("output_path")
+        filename = selected.get("download_name") or f"ai-voice-{job['id'][:8]}.wav"
+    else:
+        locator = job.get("audio_locator") or job.get("output_path")
+        filename = job.get("download_name") or f"ai-voice-{job['id'][:8]}.wav"
+    if not locator:
+        raise HTTPException(status_code=404, detail="Audio file is unavailable")
+    return locator, filename
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {
@@ -141,6 +270,11 @@ def config() -> dict:
         "limits": {
             "max_text_chars": settings.max_text_chars,
             "max_upload_mb": settings.max_upload_mb,
+            "max_translation_targets": 5,
+        },
+        "translation": {
+            "source_languages": sorted(TRANSLATION_SOURCE_LANGUAGES),
+            "target_languages": list(SUPPORTED_LANGUAGES),
         },
         "credits": {"per_character": 1, "starter": settings.starter_credits},
         "auth": {
@@ -175,45 +309,46 @@ def get_job(job_id: str, user_id: str = Depends(get_current_user)) -> dict:
 def get_audio(
     job_id: str,
     download: bool = False,
+    language: str | None = None,
     user_id: str = Depends(get_current_user),
 ):
     job = repository.get_job(job_id, user_id)
     if not job or job.get("status") != "completed":
         raise HTTPException(status_code=404, detail="Audio is not ready")
-    locator = job.get("audio_locator") or job.get("output_path")
-    if not locator:
-        raise HTTPException(status_code=404, detail="Audio file is unavailable")
-    remote_url = audio_storage.url(locator, job["download_name"] if download else None)
+    locator, filename = resolve_audio(job, language)
+    remote_url = audio_storage.url(locator, filename if download else None)
     if remote_url:
         return RedirectResponse(remote_url)
     path = Path(locator)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio file is unavailable")
-    filename = job["download_name"] if download else None
-    return FileResponse(path, media_type="audio/wav", filename=filename)
+    return FileResponse(path, media_type="audio/wav", filename=filename if download else None)
 
 
 @app.get("/api/jobs/{job_id}/audio-url")
 def get_audio_url(
     job_id: str,
     download: bool = False,
+    language: str | None = None,
     user_id: str = Depends(get_current_user),
 ) -> dict:
     """Return a short-lived direct URL without proxying the WAV through Render."""
     job = repository.get_job(job_id, user_id)
     if not job or job.get("status") != "completed":
         raise HTTPException(status_code=404, detail="Audio is not ready")
-    locator = job.get("audio_locator") or job.get("output_path")
-    if not locator:
-        raise HTTPException(status_code=404, detail="Audio file is unavailable")
-    filename = job.get("download_name") or f"ai-voice-{job_id[:8]}.wav"
+    locator, filename = resolve_audio(job, language)
     remote_url = audio_storage.url(locator, filename if download else None)
     if remote_url:
         return {"url": remote_url, "download_name": filename, "expires_in": 900}
     path = Path(locator)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio file is unavailable")
-    suffix = "?download=true" if download else ""
+    parameters = []
+    if language:
+        parameters.append(f"language={language}")
+    if download:
+        parameters.append("download=true")
+    suffix = f"?{'&'.join(parameters)}" if parameters else ""
     return {
         "url": f"/api/jobs/{job_id}/audio{suffix}",
         "download_name": filename,
@@ -239,6 +374,8 @@ async def generate(
         raise HTTPException(status_code=400, detail="Unsupported voice")
     voice_option = VOICE_OPTIONS[voice]
     is_clone = voice_option["engine"] == "chatterbox"
+    if voice_option["engine"] == "chatterbox-default" and model != "multilingual-v3":
+        raise HTTPException(status_code=400, detail="Global Narrator requires Multilingual V3")
     if is_clone and not consent:
         raise HTTPException(status_code=400, detail="Voice-owner consent is required")
     if is_clone and reference is None:
@@ -323,6 +460,135 @@ async def generate(
 
     options = GenerationOptions(model, language, exaggeration, cfg_weight, temperature, voice)
     executor.submit(run_generation, job_id, user_id, text, normalized_path, options)
+    return public_job(job)
+
+
+@app.post("/api/generate-multilingual", status_code=202)
+async def generate_multilingual(
+    text: Annotated[str, Form(...)],
+    target_languages: Annotated[str, Form(...)],
+    reference: Annotated[UploadFile | None, File()] = None,
+    source_language: Annotated[str, Form()] = "auto",
+    voice: Annotated[str, Form()] = "global",
+    exaggeration: Annotated[float, Form()] = 0.5,
+    cfg_weight: Annotated[float, Form()] = 0.5,
+    temperature: Annotated[float, Form()] = 0.8,
+    consent: Annotated[bool, Form()] = False,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    text = text.strip()
+    targets = list(dict.fromkeys(code.strip() for code in target_languages.split(",") if code.strip()))
+    if not text:
+        raise HTTPException(status_code=400, detail="Add a script to translate")
+    if len(text) > settings.max_text_chars:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Script exceeds the {settings.max_text_chars:,}-character limit",
+        )
+    if not targets:
+        raise HTTPException(status_code=400, detail="Choose at least one output language")
+    if len(targets) > 5:
+        raise HTTPException(status_code=400, detail="Choose up to 5 output languages at once")
+    if any(language not in SUPPORTED_LANGUAGES for language in targets):
+        raise HTTPException(status_code=400, detail="One or more output languages are unsupported")
+    if source_language == "auto":
+        source_language = detect_source_language(text)
+    elif source_language not in TRANSLATION_SOURCE_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Unsupported source language")
+    if voice not in VOICE_OPTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported voice")
+    voice_option = VOICE_OPTIONS[voice]
+    is_clone = voice_option["engine"] == "chatterbox"
+    if voice_option["engine"] not in {"chatterbox", "chatterbox-default"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Choose Global Narrator or an authorized cloned voice for translation",
+        )
+    if any(language not in voice_option["languages"] for language in targets):
+        raise HTTPException(status_code=400, detail="That voice does not support every output language")
+    if is_clone and not consent:
+        raise HTTPException(status_code=400, detail="Voice-owner consent is required")
+    if is_clone and reference is None:
+        raise HTTPException(status_code=400, detail="Add or record a reference voice first")
+    if not 0 <= exaggeration <= 1 or not 0 <= cfg_weight <= 1 or not 0.1 <= temperature <= 2:
+        raise HTTPException(status_code=400, detail="Generation controls are out of range")
+
+    job_id = uuid.uuid4().hex
+    normalized_path: Path | None = None
+    if is_clone and reference is not None:
+        upload_suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
+        raw_path = settings.uploads_dir / f"{job_id}-raw{upload_suffix}"
+        normalized_path = settings.uploads_dir / f"{job_id}.wav"
+        max_bytes = settings.max_upload_mb * 1024 * 1024
+        size = 0
+        with raw_path.open("wb") as target:
+            while chunk := await reference.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    target.close()
+                    raw_path.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="Reference audio is too large")
+                target.write(chunk)
+        try:
+            normalize_reference(raw_path, normalized_path)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            raw_path.unlink(missing_ok=True)
+
+    credits = len(text) * len(targets)
+    job = {
+        "id": job_id,
+        "kind": "multilingual",
+        "status": "queued",
+        "stage": "Queued",
+        "progress": 2,
+        "created_at": now_iso(),
+        "completed_at": None,
+        "model": "multilingual-v3",
+        "voice": voice,
+        "voice_label": voice_option["label"],
+        "voice_source": "clone" if is_clone else "ready-made",
+        "source_language": source_language,
+        "target_languages": targets,
+        "language": "multiple",
+        "characters": len(text),
+        "credits": credits,
+        "text_preview": text[:120] + ("…" if len(text) > 120 else ""),
+        "reference_path": str(normalized_path) if normalized_path else None,
+        "outputs": [],
+        "audio_url": None,
+        "download_name": None,
+        "error": None,
+        "consent_attested": bool(consent) if is_clone else False,
+    }
+    try:
+        repository.create_job_and_reserve(user_id, job, credits)
+    except InsufficientCredits as exc:
+        if normalized_path is not None:
+            normalized_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "Not enough credits",
+                "required": exc.required,
+                "balance": exc.balance,
+            },
+        ) from exc
+
+    executor.submit(
+        run_multilingual_generation,
+        job_id,
+        user_id,
+        text,
+        source_language,
+        targets,
+        normalized_path,
+        voice,
+        exaggeration,
+        cfg_weight,
+        temperature,
+    )
     return public_job(job)
 
 

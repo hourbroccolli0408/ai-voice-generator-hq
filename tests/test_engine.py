@@ -26,4 +26,6 @@ def test_all_voice_languages_are_declared():
 def test_ready_voice_catalog_and_clone_are_available():
     assert len([voice for voice in VOICE_OPTIONS.values() if voice["engine"] == "kokoro"]) >= 4
     assert VOICE_OPTIONS["clone"]["engine"] == "chatterbox"
+    assert VOICE_OPTIONS["global"]["engine"] == "chatterbox-default"
+    assert set(VOICE_OPTIONS["global"]["languages"]) == set(SUPPORTED_LANGUAGES)
 

@@ -13,6 +13,7 @@ dependencies = [
   "SQLAlchemy==2.0.40",
   "PyJWT[crypto]==2.10.1",
   "boto3==1.37.38",
+  "langdetect==1.0.9",
 ]
 
 [project.optional-dependencies]
