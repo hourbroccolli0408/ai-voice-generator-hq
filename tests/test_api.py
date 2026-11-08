@@ -29,6 +29,8 @@ def test_health_and_config(monkeypatch, tmp_path):
         assert health.json()["engine"] == "mock"
         config = client.get("/api/config")
         assert "multilingual-v3" in config.json()["models"]
+        assert "heart" in config.json()["voices"]
+        assert "clone" in config.json()["voices"]
 
 
 def test_generation_requires_consent(monkeypatch, tmp_path):
@@ -50,6 +52,38 @@ def test_generation_requires_consent(monkeypatch, tmp_path):
     assert "consent" in response.json()["detail"].lower()
 
 
+def test_ready_voice_does_not_require_reference_or_consent(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        response = client.post(
+            "/api/generate",
+            data={
+                "text": "A ready voice works without a recording.",
+                "voice": "heart",
+                "model": "multilingual-v3",
+                "language": "en",
+                "consent": "false",
+            },
+        )
+        assert response.status_code == 202
+        job = response.json()
+        assert job["voice"] == "heart"
+        assert job["voice_label"] == "Heart"
+        assert job["voice_source"] == "ready-made"
+        for _ in range(100):
+            job = client.get(f"/api/jobs/{job['id']}").json()
+            if job["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.01)
+        assert job["status"] == "completed"
+
+
 def test_mock_generation_completes(monkeypatch, tmp_path):
     monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
     monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
@@ -68,6 +102,7 @@ def test_mock_generation_completes(monkeypatch, tmp_path):
                 "text": "A small end-to-end test.",
                 "model": "nano",
                 "language": "en",
+                "voice": "clone",
                 "consent": "true",
             },
         )

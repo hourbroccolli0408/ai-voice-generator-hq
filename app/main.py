@@ -15,7 +15,13 @@ from fastapi.staticfiles import StaticFiles
 from .auth import get_current_user
 from .config import settings
 from .dispatcher import create_generation_engine
-from .engine import MODEL_OPTIONS, SUPPORTED_LANGUAGES, GenerationOptions, normalize_reference
+from .engine import (
+    MODEL_OPTIONS,
+    SUPPORTED_LANGUAGES,
+    VOICE_OPTIONS,
+    GenerationOptions,
+    normalize_reference,
+)
 from .repository import InsufficientCredits, Repository
 from .storage import AudioStorage
 
@@ -67,7 +73,7 @@ def run_generation(
     job_id: str,
     user_id: str,
     text: str,
-    reference_path: Path,
+    reference_path: Path | None,
     options: GenerationOptions,
 ) -> None:
     output_path = settings.jobs_dir / job_id / "voiceover.wav"
@@ -109,7 +115,8 @@ def run_generation(
             completed_at=now_iso(),
         )
     finally:
-        reference_path.unlink(missing_ok=True)
+        if reference_path is not None:
+            reference_path.unlink(missing_ok=True)
 
 
 @app.get("/api/health")
@@ -129,6 +136,7 @@ def config() -> dict:
     return {
         "brand": settings.app_name,
         "models": MODEL_OPTIONS,
+        "voices": VOICE_OPTIONS,
         "languages": SUPPORTED_LANGUAGES,
         "limits": {
             "max_text_chars": settings.max_text_chars,
@@ -215,10 +223,11 @@ def get_audio_url(
 
 @app.post("/api/generate", status_code=202)
 async def generate(
-    reference: Annotated[UploadFile, File(...)],
     text: Annotated[str, Form(...)],
+    reference: Annotated[UploadFile | None, File()] = None,
     model: Annotated[str, Form()] = "multilingual-v3",
     language: Annotated[str, Form()] = "en",
+    voice: Annotated[str, Form()] = "clone",
     exaggeration: Annotated[float, Form()] = 0.5,
     cfg_weight: Annotated[float, Form()] = 0.5,
     temperature: Annotated[float, Form()] = 0.8,
@@ -226,8 +235,14 @@ async def generate(
     user_id: str = Depends(get_current_user),
 ) -> dict:
     text = text.strip()
-    if not consent:
+    if voice not in VOICE_OPTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported voice")
+    voice_option = VOICE_OPTIONS[voice]
+    is_clone = voice_option["engine"] == "chatterbox"
+    if is_clone and not consent:
         raise HTTPException(status_code=400, detail="Voice-owner consent is required")
+    if is_clone and reference is None:
+        raise HTTPException(status_code=400, detail="Add or record a reference voice first")
     if not text:
         raise HTTPException(status_code=400, detail="Add a script to generate")
     if len(text) > settings.max_text_chars:
@@ -239,30 +254,34 @@ async def generate(
         raise HTTPException(status_code=400, detail="Unsupported model")
     if language not in MODEL_OPTIONS[model]["languages"]:
         raise HTTPException(status_code=400, detail="Language is not supported by that model")
+    if language not in voice_option["languages"]:
+        raise HTTPException(status_code=400, detail="Language is not supported by that voice")
     if not 0 <= exaggeration <= 1 or not 0 <= cfg_weight <= 1 or not 0.1 <= temperature <= 2:
         raise HTTPException(status_code=400, detail="Generation controls are out of range")
 
     job_id = uuid.uuid4().hex
-    upload_suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
-    raw_path = settings.uploads_dir / f"{job_id}-raw{upload_suffix}"
-    normalized_path = settings.uploads_dir / f"{job_id}.wav"
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    size = 0
-    with raw_path.open("wb") as target:
-        while chunk := await reference.read(1024 * 1024):
-            size += len(chunk)
-            if size > max_bytes:
-                target.close()
-                raw_path.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="Reference audio is too large")
-            target.write(chunk)
+    normalized_path: Path | None = None
+    if is_clone and reference is not None:
+        upload_suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
+        raw_path = settings.uploads_dir / f"{job_id}-raw{upload_suffix}"
+        normalized_path = settings.uploads_dir / f"{job_id}.wav"
+        max_bytes = settings.max_upload_mb * 1024 * 1024
+        size = 0
+        with raw_path.open("wb") as target:
+            while chunk := await reference.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    target.close()
+                    raw_path.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="Reference audio is too large")
+                target.write(chunk)
 
-    try:
-        normalize_reference(raw_path, normalized_path)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        raw_path.unlink(missing_ok=True)
+        try:
+            normalize_reference(raw_path, normalized_path)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            raw_path.unlink(missing_ok=True)
 
     credits = len(text)
     job = {
@@ -273,22 +292,26 @@ async def generate(
         "created_at": now_iso(),
         "completed_at": None,
         "model": model,
+        "voice": voice,
+        "voice_label": voice_option["label"],
+        "voice_source": "clone" if is_clone else "ready-made",
         "language": language,
         "characters": len(text),
         "credits": credits,
         "text_preview": text[:120] + ("…" if len(text) > 120 else ""),
-        "reference_path": str(normalized_path),
+        "reference_path": str(normalized_path) if normalized_path else None,
         "output_path": str(settings.jobs_dir / job_id / "voiceover.wav"),
         "audio_locator": None,
         "audio_url": None,
         "download_name": None,
         "error": None,
-        "consent_attested": True,
+        "consent_attested": bool(consent) if is_clone else False,
     }
     try:
         repository.create_job_and_reserve(user_id, job, credits)
     except InsufficientCredits as exc:
-        normalized_path.unlink(missing_ok=True)
+        if normalized_path is not None:
+            normalized_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=402,
             detail={
@@ -298,7 +321,7 @@ async def generate(
             },
         ) from exc
 
-    options = GenerationOptions(model, language, exaggeration, cfg_weight, temperature)
+    options = GenerationOptions(model, language, exaggeration, cfg_weight, temperature, voice)
     executor.submit(run_generation, job_id, user_id, text, normalized_path, options)
     return public_job(job)
 

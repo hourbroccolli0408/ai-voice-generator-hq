@@ -3,11 +3,12 @@ FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    HF_HUB_DISABLE_XET=1 \
     VOICEFORGE_DEVICE=cuda \
     VOICEFORGE_ENGINE=chatterbox
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg git \
+    && apt-get install -y --no-install-recommends espeak-ng ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,7 +22,11 @@ RUN pip install --upgrade pip \
     && pip install --upgrade --force-reinstall \
         torch==2.7.1 torchaudio==2.7.1 \
         --index-url https://download.pytorch.org/whl/cu128 \
+    && python -m spacy download en_core_web_sm \
     && python -c "import torch; assert torch.__version__.startswith('2.7.1'); assert torch.version.cuda.startswith('12.8'); print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list())"
+
+# Keep ready-made voices independent of Hugging Face availability during a request.
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='hexgrad/Kokoro-82M', allow_patterns=['config.json', 'kokoro-v1_0.pth', 'voices/af_heart.pt', 'voices/af_bella.pt', 'voices/am_michael.pt', 'voices/bf_emma.pt', 'voices/bm_george.pt', 'voices/af_nicole.pt'])"
 
 # spacy-pkuseg hard-codes a five-second download timeout. Bundle its verified
 # model so cold-start generation never depends on a runtime GitHub download.

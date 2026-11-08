@@ -45,24 +45,30 @@ def handler(event: dict) -> dict:
         except Exception as exc:
             return {"error": str(exc)}
 
-    required = {"text", "reference_audio", "model", "language"}
+    required = {"text", "model", "language"}
     missing = sorted(required - payload.keys())
     if missing:
         return {"error": f"Missing input: {', '.join(missing)}"}
 
     try:
-        reference_bytes = base64.b64decode(payload["reference_audio"], validate=True)
+        voice = payload.get("voice", "clone")
+        if voice == "clone" and not payload.get("reference_audio"):
+            return {"error": "Missing input: reference_audio"}
         options = GenerationOptions(
             model=payload["model"],
             language=payload["language"],
             exaggeration=float(payload.get("exaggeration", 0.5)),
             cfg_weight=float(payload.get("cfg_weight", 0.5)),
             temperature=float(payload.get("temperature", 0.8)),
+            voice=voice,
         )
         with tempfile.TemporaryDirectory() as temp_dir:
-            reference_path = Path(temp_dir) / "reference.wav"
             output_path = Path(temp_dir) / "voiceover.wav"
-            reference_path.write_bytes(reference_bytes)
+            reference_path = None
+            if payload.get("reference_audio"):
+                reference_bytes = base64.b64decode(payload["reference_audio"], validate=True)
+                reference_path = Path(temp_dir) / "reference.wav"
+                reference_path.write_bytes(reference_bytes)
             engine.generate(payload["text"], reference_path, output_path, options)
             return {"audio_base64": base64.b64encode(output_path.read_bytes()).decode("ascii")}
     except Exception as exc:

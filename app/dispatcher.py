@@ -23,7 +23,7 @@ class RunPodEngine:
     def generate(
         self,
         text: str,
-        reference_path: Path,
+        reference_path: Path | None,
         output_path: Path,
         options: GenerationOptions,
         progress: Callable[[int, int], None] | None = None,
@@ -32,14 +32,18 @@ class RunPodEngine:
         payload = {
             "input": {
                 "text": text,
-                "reference_audio": base64.b64encode(reference_path.read_bytes()).decode("ascii"),
                 "model": options.model,
                 "language": options.language,
+                "voice": options.voice,
                 "exaggeration": options.exaggeration,
                 "cfg_weight": options.cfg_weight,
                 "temperature": options.temperature,
             }
         }
+        if reference_path is not None:
+            payload["input"]["reference_audio"] = base64.b64encode(
+                reference_path.read_bytes()
+            ).decode("ascii")
         with httpx.Client(timeout=60) as client:
             response = client.post(f"{self.base_url}/run", headers=headers, json=payload)
             response.raise_for_status()

@@ -1,21 +1,22 @@
 # AI Voice Generator HQ
 
-AI Voice Generator HQ is a consent-first AI voiceover service. Give it a 6–30 second
-reference clip from an authorized speaker, paste a script, and it generates a downloadable,
-watermarked WAV.
+AI Voice Generator HQ is a consent-first AI voiceover service. Choose one of six ready-made
+voices or provide a 6–30 second reference clip from an authorized speaker, paste a script,
+and it generates a downloadable, watermarked WAV.
 
-The default backend uses **Chatterbox Multilingual V3** for 23-language zero-shot voice
-cloning. Turbo and Nano are included for faster English generation. Chatterbox adds a
-PerTh provenance watermark to generated audio.
+The default backend uses **Kokoro 82M** for ready-made English voices and **Chatterbox
+Multilingual V3** for 23-language zero-shot voice cloning. Turbo and Nano are included for
+faster English cloning. Generated audio receives a PerTh provenance watermark.
 
 > Only clone your own voice or a voice you have explicit permission to use. VoiceForge
-> requires a consent attestation for every generation. Production mode includes Supabase
+> requires a consent attestation whenever a user clones a voice. Production mode includes Supabase
 > authentication and a transaction-safe character credit ledger. Rate limiting and payment
 > webhooks remain required before a fully public launch.
 
 ## What is included
 
 - Browser recording and drag-and-drop audio uploads
+- Six ready-made American and British voices that need no recording
 - Multilingual V3, English Turbo, and CPU-friendly Nano model choices
 - Long-script chunking and a single-worker generation queue
 - Local history, playback, and WAV downloads
@@ -96,6 +97,8 @@ Generated audio and job metadata live under `data/jobs`; normalized reference cl
 under `data/uploads`. Remove those folders' contents when you want to erase local data.
 
 For the public beta architecture and launch sequence, see [DEPLOYMENT.md](DEPLOYMENT.md).
+Third-party model licenses and attribution are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Model and maintenance note
 

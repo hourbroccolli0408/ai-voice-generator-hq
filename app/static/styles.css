@@ -75,6 +75,13 @@ h1 { font-size: clamp(40px, 5vw, 68px); line-height: .98; letter-spacing: -.065e
 .step-number { color: var(--lime); font: 500 9px/1 "DM Mono", monospace; border: 1px solid #3f4932; border-radius: 5px; padding: 6px; }
 .panel h2 { font-size: 15px; letter-spacing: -.02em; margin: 1px 0 6px; }
 .panel-heading p { font-size: 10px; color: var(--faint); margin: 0; line-height: 1.5; }
+.voice-picker > span { display: block; color: var(--faint); font: 400 8px/1 "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 7px 2px; }
+.voice-description { color: var(--muted); font-size: 9px; margin: 9px 2px 18px; }
+.preset-ready { min-height: 142px; border: 1px solid #3f4932; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 13px; padding: 20px; background: var(--lime-soft); }
+.preset-ready > span { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; color: var(--dark); background: var(--lime); font-weight: 700; }
+.preset-ready strong, .preset-ready small { display: block; }
+.preset-ready strong { font-size: 11px; margin-bottom: 5px; }
+.preset-ready small { color: var(--faint); font-size: 8px; }
 .drop-zone { min-height: 142px; border: 1px dashed #3a403a; border-radius: 11px; display: grid; place-items: center; text-align: center; padding: 20px; transition: .2s; cursor: pointer; }
 .drop-zone:hover, .drop-zone.dragover { border-color: var(--lime); background: var(--lime-soft); }
 .upload-state { display: grid; justify-items: center; }

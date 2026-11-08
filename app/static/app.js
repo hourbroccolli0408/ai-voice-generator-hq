@@ -28,6 +28,10 @@ const elements = {
   recordTime: $("#record-time"),
   script: $("#script"),
   count: $("#char-count"),
+  voice: $("#voice"),
+  voiceDescription: $("#voice-description"),
+  cloneControls: $("#clone-controls"),
+  presetReady: $("#preset-ready"),
   model: $("#model"),
   language: $("#language"),
   submit: $("#generate-button"),
@@ -152,18 +156,37 @@ function updateScriptMeta() {
   $("#duration-estimate").textContent = `~${Math.max(0, Math.round(length / 15))} sec`;
 }
 
+function isCloneMode() {
+  return elements.voice.value === "clone";
+}
+
 function renderLanguages() {
   const model = state.config.models[elements.model.value];
+  const voice = state.config.voices[elements.voice.value];
   const previous = elements.language.value;
-  elements.language.innerHTML = model.languages
+  const languages = isCloneMode()
+    ? model.languages
+    : voice.languages.filter((code) => model.languages.includes(code));
+  elements.language.innerHTML = languages
     .map((code) => `<option value="${code}">${state.config.languages[code]}</option>`)
     .join("");
-  elements.language.value = model.languages.includes(previous)
+  elements.language.value = languages.includes(previous)
     ? previous
-    : (model.languages.includes("en") ? "en" : model.languages[0]);
-  const advancedDisabled = elements.model.value !== "multilingual-v3";
+    : (languages.includes("en") ? "en" : languages[0]);
+  const advancedDisabled = !isCloneMode() || elements.model.value !== "multilingual-v3";
   $("#exaggeration").disabled = advancedDisabled;
   $("#cfg-weight").disabled = advancedDisabled;
+}
+
+function renderVoiceMode() {
+  const voice = state.config.voices[elements.voice.value];
+  const cloning = isCloneMode();
+  elements.voiceDescription.textContent = `${voice.description} · ${voice.accent}`;
+  elements.cloneControls.classList.toggle("hidden", !cloning);
+  elements.presetReady.classList.toggle("hidden", cloning);
+  $("#model-control").classList.toggle("hidden", !cloning);
+  $("#advanced-controls").classList.toggle("hidden", !cloning);
+  renderLanguages();
 }
 
 async function loadConfig() {
@@ -171,11 +194,15 @@ async function loadConfig() {
   state.config = await configResponse.json();
   const health = await healthResponse.json();
   await initAuth();
+  elements.voice.innerHTML = Object.entries(state.config.voices)
+    .map(([value, voice]) => `<option value="${value}">${voice.label} — ${voice.accent}</option>`)
+    .join("");
+  elements.voice.value = "heart";
   elements.model.innerHTML = Object.entries(state.config.models)
     .map(([value, model]) => `<option value="${value}">${model.label}</option>`)
     .join("");
   elements.model.value = health.device === "cpu" ? "nano" : "multilingual-v3";
-  renderLanguages();
+  renderVoiceMode();
   elements.script.maxLength = state.config.limits.max_text_chars;
   $("#char-limit").textContent = state.config.limits.max_text_chars.toLocaleString();
   $("#runtime-label").textContent = health.engine === "mock" ? "Preview engine" : "Secure voice engine";
@@ -337,23 +364,27 @@ async function pollJob(jobId) {
 
 async function submitGeneration(event) {
   event.preventDefault();
-  if (!state.file) return toast("Add or record a reference voice first.", true);
+  const cloning = isCloneMode();
+  if (cloning && !state.file) return toast("Add or record a reference voice first.", true);
   if (!elements.script.value.trim()) return toast("Write a script to generate.", true);
-  if (!$("#consent").checked) return toast("Please confirm the speaker has consented.", true);
+  if (cloning && !$("#consent").checked) return toast("Please confirm the speaker has consented.", true);
 
   const body = new FormData();
-  body.append("reference", state.file);
+  if (cloning) body.append("reference", state.file);
   body.append("text", elements.script.value.trim());
+  body.append("voice", elements.voice.value);
   body.append("model", elements.model.value);
   body.append("language", elements.language.value);
   body.append("exaggeration", $("#exaggeration").value);
   body.append("cfg_weight", $("#cfg-weight").value);
   body.append("temperature", $("#temperature").value);
-  body.append("consent", "true");
+  body.append("consent", cloning ? "true" : "false");
   elements.submit.disabled = true;
   elements.result.classList.remove("hidden");
-  elements.resultTitle.textContent = "Preparing reference audio";
-  elements.resultMessage.textContent = "Cleaning and validating your voice sample…";
+  elements.resultTitle.textContent = cloning ? "Preparing reference audio" : "Preparing your voice";
+  elements.resultMessage.textContent = cloning
+    ? "Cleaning and validating your voice sample…"
+    : `Loading ${state.config.voices[elements.voice.value].label}…`;
   elements.progress.style.width = "3%";
   elements.player.classList.add("hidden");
 
@@ -388,7 +419,7 @@ async function loadHistory() {
       <div class="history-icon">♪</div>
       <div class="history-copy">
         <strong>${escapeHtml(job.text_preview)}</strong>
-        <span>${new Date(job.created_at).toLocaleString()} · ${job.model} · ${job.language.toUpperCase()}</span>
+        <span>${new Date(job.created_at).toLocaleString()} · ${escapeHtml(job.voice_label || "Cloned voice")} · ${job.language.toUpperCase()}</span>
       </div>
       <div class="history-actions">
         <span class="history-status">${job.status}</span>
@@ -476,6 +507,7 @@ function bindEvents() {
     updateScriptMeta();
   });
   elements.model.addEventListener("change", renderLanguages);
+  elements.voice.addEventListener("change", renderVoiceMode);
   elements.form.addEventListener("submit", submitGeneration);
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   $(".mobile-menu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));

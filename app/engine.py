@@ -57,6 +57,70 @@ MODEL_OPTIONS = {
     },
 }
 
+VOICE_OPTIONS = {
+    "heart": {
+        "label": "Heart",
+        "description": "Warm, natural American voice",
+        "accent": "American",
+        "engine": "kokoro",
+        "engine_voice": "af_heart",
+        "language_code": "a",
+        "languages": ["en"],
+    },
+    "bella": {
+        "label": "Bella",
+        "description": "Expressive American voice",
+        "accent": "American",
+        "engine": "kokoro",
+        "engine_voice": "af_bella",
+        "language_code": "a",
+        "languages": ["en"],
+    },
+    "michael": {
+        "label": "Michael",
+        "description": "Grounded American voice",
+        "accent": "American",
+        "engine": "kokoro",
+        "engine_voice": "am_michael",
+        "language_code": "a",
+        "languages": ["en"],
+    },
+    "emma": {
+        "label": "Emma",
+        "description": "Clear, polished British voice",
+        "accent": "British",
+        "engine": "kokoro",
+        "engine_voice": "bf_emma",
+        "language_code": "b",
+        "languages": ["en"],
+    },
+    "george": {
+        "label": "George",
+        "description": "Calm British voice",
+        "accent": "British",
+        "engine": "kokoro",
+        "engine_voice": "bm_george",
+        "language_code": "b",
+        "languages": ["en"],
+    },
+    "nicole": {
+        "label": "Nicole",
+        "description": "Confident American narrator",
+        "accent": "American",
+        "engine": "kokoro",
+        "engine_voice": "af_nicole",
+        "language_code": "a",
+        "languages": ["en"],
+    },
+    "clone": {
+        "label": "Clone my voice",
+        "description": "Upload or record an authorized voice sample",
+        "accent": "Custom",
+        "engine": "chatterbox",
+        "languages": list(SUPPORTED_LANGUAGES),
+    },
+}
+
 
 @dataclass(slots=True)
 class GenerationOptions:
@@ -65,6 +129,7 @@ class GenerationOptions:
     exaggeration: float
     cfg_weight: float
     temperature: float
+    voice: str = "clone"
 
 
 def split_text(text: str, max_chars: int = 420) -> list[str]:
@@ -178,7 +243,16 @@ class ModelManager:
             torch.cuda.empty_cache()
 
         self.device = self._resolve_device()
-        if model_name == "multilingual-v3":
+        if model_name.startswith("kokoro-"):
+            from kokoro import KPipeline
+
+            language_code = model_name.removeprefix("kokoro-")
+            model = KPipeline(
+                lang_code=language_code,
+                repo_id="hexgrad/Kokoro-82M",
+                device=self.device,
+            )
+        elif model_name == "multilingual-v3":
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
             model = ChatterboxMultilingualTTS.from_pretrained(
@@ -200,7 +274,7 @@ class ModelManager:
     def generate(
         self,
         text: str,
-        reference_path: Path,
+        reference_path: Path | None,
         output_path: Path,
         options: GenerationOptions,
         progress: Callable[[int, int], None] | None = None,
@@ -212,34 +286,65 @@ class ModelManager:
             raise ValueError("Unsupported voice model")
         if options.language not in MODEL_OPTIONS[options.model]["languages"]:
             raise ValueError("The selected model does not support that language")
+        if options.voice not in VOICE_OPTIONS:
+            raise ValueError("Unsupported voice")
+
+        voice = VOICE_OPTIONS[options.voice]
+        is_clone = voice["engine"] == "chatterbox"
+        if is_clone and reference_path is None:
+            raise ValueError("A reference recording is required to clone a voice")
+        if options.language not in voice["languages"]:
+            raise ValueError("The selected voice does not support that language")
 
         chunks = split_text(text)
         with self._lock, torch.inference_mode():
-            model = self._load(options.model)
+            model_name = options.model if is_clone else f"kokoro-{voice['language_code']}"
+            model = self._load(model_name)
             generated = []
             for index, chunk in enumerate(chunks, start=1):
-                common = {
-                    "audio_prompt_path": str(reference_path),
-                    "temperature": options.temperature,
-                }
-                if options.model == "multilingual-v3":
-                    wav = model.generate(
-                        chunk,
-                        language_id=options.language,
-                        exaggeration=options.exaggeration,
-                        cfg_weight=options.cfg_weight,
-                        **common,
-                    )
+                if is_clone:
+                    common = {
+                        "audio_prompt_path": str(reference_path),
+                        "temperature": options.temperature,
+                    }
+                    if options.model == "multilingual-v3":
+                        wav = model.generate(
+                            chunk,
+                            language_id=options.language,
+                            exaggeration=options.exaggeration,
+                            cfg_weight=options.cfg_weight,
+                            **common,
+                        )
+                    else:
+                        wav = model.generate(chunk, **common)
+                    generated.append(wav.cpu())
                 else:
-                    wav = model.generate(chunk, **common)
-                generated.append(wav.cpu())
+                    results = list(model(chunk, voice=voice["engine_voice"]))
+                    for result_index, result in enumerate(results):
+                        if result.audio is None:
+                            continue
+                        generated.append(result.audio.cpu().reshape(1, -1))
+                        if result_index < len(results) - 1:
+                            generated.append(torch.zeros((1, int(24000 * 0.08))))
                 if index < len(chunks):
-                    generated.append(torch.zeros((1, int(model.sr * 0.28))))
+                    sample_rate = model.sr if is_clone else 24000
+                    generated.append(torch.zeros((1, int(sample_rate * 0.28))))
                 if progress:
                     progress(index, len(chunks))
 
+            if not generated:
+                raise RuntimeError("The speech engine did not return any audio")
             combined = torch.cat(generated, dim=-1)
-            torchaudio.save(str(output_path), combined, model.sr)
+            sample_rate = model.sr if is_clone else 24000
+            if not is_clone:
+                import perth
+
+                watermarker = perth.PerthImplicitWatermarker()
+                marked = watermarker.apply_watermark(
+                    combined.squeeze(0).numpy(), sample_rate=sample_rate
+                )
+                combined = torch.from_numpy(marked).reshape(1, -1)
+            torchaudio.save(str(output_path), combined, sample_rate)
 
 
 class MockEngine:
@@ -251,7 +356,7 @@ class MockEngine:
     def generate(
         self,
         text: str,
-        reference_path: Path,
+        reference_path: Path | None,
         output_path: Path,
         options: GenerationOptions,
         progress: Callable[[int, int], None] | None = None,

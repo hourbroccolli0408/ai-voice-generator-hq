@@ -1,4 +1,4 @@
-from app.engine import MODEL_OPTIONS, SUPPORTED_LANGUAGES, split_text
+from app.engine import MODEL_OPTIONS, SUPPORTED_LANGUAGES, VOICE_OPTIONS, split_text
 
 
 def test_split_text_keeps_short_script_together():
@@ -16,4 +16,14 @@ def test_split_text_respects_chunk_size():
 def test_all_model_languages_are_declared():
     for model in MODEL_OPTIONS.values():
         assert set(model["languages"]).issubset(SUPPORTED_LANGUAGES)
+
+
+def test_all_voice_languages_are_declared():
+    for voice in VOICE_OPTIONS.values():
+        assert set(voice["languages"]).issubset(SUPPORTED_LANGUAGES)
+
+
+def test_ready_voice_catalog_and_clone_are_available():
+    assert len([voice for voice in VOICE_OPTIONS.values() if voice["engine"] == "kokoro"]) >= 4
+    assert VOICE_OPTIONS["clone"]["engine"] == "chatterbox"
 
