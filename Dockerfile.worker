@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VOICEFORGE_ENGINE=chatterbox
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg git \
+    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,12 +15,24 @@ COPY pyproject.toml ./
 COPY app ./app
 COPY worker ./worker
 # Chatterbox pins torch 2.6, which cannot execute on Blackwell GPUs.
-# Restore the first stable CUDA 12.8 build with Blackwell support.
+# Restore the first stable CUDA 12.8 build with Blackwell support. Also bundle
+# spacy-pkuseg's model because that package hard-codes a five-second GitHub
+# timeout; cold-start generation must not depend on a runtime GitHub download.
 RUN pip install --upgrade pip \
     && pip install ".[worker]" \
     && pip install --upgrade --force-reinstall \
         torch==2.7.1 torchaudio==2.7.1 \
         --index-url https://download.pytorch.org/whl/cu128 \
-    && python -c "import torch; assert torch.__version__.startswith('2.7.1'); assert torch.version.cuda.startswith('12.8'); print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list())"
+    && python -c "import torch; assert torch.__version__.startswith('2.7.1'); assert torch.version.cuda.startswith('12.8'); print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list())" \
+    && mkdir -p /root/.pkuseg/spacy_ontonotes \
+    && curl --fail --location --retry 5 --retry-all-errors \
+        --connect-timeout 30 --max-time 300 \
+        --output /tmp/spacy_ontonotes.zip \
+        https://github.com/explosion/spacy-pkuseg/releases/download/v0.0.26/spacy_ontonotes.zip \
+    && echo "b216e7f92de7ae285aeab8feba2faa8ea8216e5995ff6fb3d391cc8356db1bfe  /tmp/spacy_ontonotes.zip" | sha256sum --check \
+    && python -c "import zipfile; zipfile.ZipFile('/tmp/spacy_ontonotes.zip').extractall('/root/.pkuseg/spacy_ontonotes')" \
+    && rm /tmp/spacy_ontonotes.zip \
+    && test -f /root/.pkuseg/spacy_ontonotes/features.msgpack \
+    && test -f /root/.pkuseg/spacy_ontonotes/weights.npz
 
 CMD ["python", "worker/handler.py"]
