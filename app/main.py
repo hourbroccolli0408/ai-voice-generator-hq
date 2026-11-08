@@ -31,12 +31,19 @@ executor = ThreadPoolExecutor(max_workers=max(1, settings.workers))
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    for interrupted in repository.fail_incomplete_jobs():
-        repository.refund(
-            interrupted["user_id"],
-            interrupted["id"],
-            int(interrupted.get("credits", 0)),
-        )
+    def reconcile_interrupted_jobs() -> None:
+        try:
+            for interrupted in repository.fail_incomplete_jobs():
+                repository.refund(
+                    interrupted["user_id"],
+                    interrupted["id"],
+                    int(interrupted.get("credits", 0)),
+                )
+        except Exception:
+            logger.exception("Startup job reconciliation failed")
+
+    # Database availability must not block the public site or health endpoint.
+    executor.submit(reconcile_interrupted_jobs)
     yield
 
 

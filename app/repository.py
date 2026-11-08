@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, func, select
@@ -54,24 +55,42 @@ class InsufficientCredits(Exception):
 class Repository:
     def __init__(self, database_url: str, starter_credits: int) -> None:
         is_sqlite = database_url.startswith("sqlite")
-        connect_args = {"check_same_thread": False} if is_sqlite else {}
-        base_engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+        connect_args = (
+            {"check_same_thread": False} if is_sqlite else {"connect_timeout": 10}
+        )
+        engine_options = {"connect_args": connect_args, "pool_pre_ping": True}
+        if not is_sqlite:
+            engine_options["pool_timeout"] = 10
+        base_engine = create_engine(database_url, **engine_options)
+        self._base_engine = base_engine
+        self._schema_lock = threading.Lock()
+        self._schema_ready = False
         if is_sqlite:
             self.engine = base_engine
+            Base.metadata.create_all(self.engine)
+            self._schema_ready = True
         else:
+            self.engine = base_engine.execution_options(
+                schema_translate_map={None: "voiceforge_private"}
+            )
+        self.starter_credits = starter_credits
+
+    def _ensure_schema(self) -> None:
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
             # Supabase exposes the public schema through its Data API by default. Keep
             # authentication, jobs, and the credit ledger in an API-private schema.
-            with base_engine.begin() as connection:
+            with self._base_engine.begin() as connection:
                 schema_exists = connection.exec_driver_sql(
                     "SELECT 1 FROM pg_namespace WHERE nspname = 'voiceforge_private'"
                 ).scalar()
                 if not schema_exists:
                     connection.exec_driver_sql("CREATE SCHEMA voiceforge_private")
-            self.engine = base_engine.execution_options(
-                schema_translate_map={None: "voiceforge_private"}
-            )
-        self.starter_credits = starter_credits
-        Base.metadata.create_all(self.engine)
+            Base.metadata.create_all(self.engine)
+            self._schema_ready = True
 
     def _ensure_user(self, session: Session, user_id: str) -> None:
         user = session.get(User, user_id)
@@ -100,11 +119,13 @@ class Repository:
         return int(value or 0)
 
     def balance(self, user_id: str) -> int:
+        self._ensure_schema()
         with Session(self.engine) as session, session.begin():
             self._ensure_user(session, user_id)
             return self._balance(session, user_id)
 
     def create_job_and_reserve(self, user_id: str, job: dict, credits: int) -> None:
+        self._ensure_schema()
         with Session(self.engine) as session, session.begin():
             self._ensure_user(session, user_id)
             session.execute(select(User).where(User.id == user_id).with_for_update()).scalar_one()
@@ -131,6 +152,7 @@ class Repository:
             )
 
     def update_job(self, job_id: str, **changes) -> dict:
+        self._ensure_schema()
         with Session(self.engine) as session, session.begin():
             row = session.get(Job, job_id)
             if not row:
@@ -142,6 +164,7 @@ class Repository:
             return payload
 
     def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
+        self._ensure_schema()
         with Session(self.engine) as session:
             row = session.get(Job, job_id)
             if not row or (user_id is not None and row.user_id != user_id):
@@ -149,6 +172,7 @@ class Repository:
             return json.loads(row.payload)
 
     def list_jobs(self, user_id: str, limit: int = 25) -> list[dict]:
+        self._ensure_schema()
         with Session(self.engine) as session:
             rows = session.scalars(
                 select(Job)
@@ -159,6 +183,7 @@ class Repository:
             return [json.loads(row.payload) for row in rows]
 
     def refund(self, user_id: str, job_id: str, credits: int) -> None:
+        self._ensure_schema()
         try:
             with Session(self.engine) as session, session.begin():
                 self._ensure_user(session, user_id)
@@ -176,6 +201,7 @@ class Repository:
             return
 
     def fail_incomplete_jobs(self) -> list[dict]:
+        self._ensure_schema()
         failed: list[dict] = []
         with Session(self.engine) as session, session.begin():
             rows = session.scalars(select(Job).where(Job.status.in_(["queued", "processing"]))).all()
