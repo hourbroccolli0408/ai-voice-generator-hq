@@ -1,15 +1,30 @@
 from __future__ import annotations
 
 import base64
+import json
 import tempfile
 from pathlib import Path
 
 import runpod
+import torch
 
 from app.config import settings
 from app.engine import GenerationOptions, create_engine
 
 engine = create_engine(settings.device, settings.engine)
+
+
+def log_runtime() -> None:
+    runtime = {
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_arches": torch.cuda.get_arch_list(),
+    }
+    if runtime["cuda_available"]:
+        runtime["gpu"] = torch.cuda.get_device_name(0)
+        runtime["compute_capability"] = torch.cuda.get_device_capability(0)
+    print(f"VOICEFORGE_RUNTIME {json.dumps(runtime, default=str)}", flush=True)
 
 
 def handler(event: dict) -> dict:
@@ -39,4 +54,5 @@ def handler(event: dict) -> dict:
 
 
 if __name__ == "__main__":
+    log_runtime()
     runpod.serverless.start({"handler": handler})

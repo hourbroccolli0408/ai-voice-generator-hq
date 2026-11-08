@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,6 +14,13 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
 COPY worker ./worker
-RUN pip install --upgrade pip && pip install ".[worker]"
+# Chatterbox pins torch 2.6, which cannot execute on Blackwell GPUs.
+# Restore the first stable CUDA 12.8 build with native sm_120 support.
+RUN pip install --upgrade pip \
+    && pip install ".[worker]" \
+    && pip install --upgrade --force-reinstall \
+        torch==2.7.1 torchaudio==2.7.1 \
+        --index-url https://download.pytorch.org/whl/cu128 \
+    && python -c "import torch; assert torch.version.cuda.startswith('12.8'); assert 'sm_120' in torch.cuda.get_arch_list(); print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list())"
 
 CMD ["python", "worker/handler.py"]
