@@ -79,7 +79,6 @@ async function initAuth() {
     $("#signout-button").classList.toggle("hidden", !session);
     if (session) loadAccount();
   });
-  if (!state.session) throw new Error("Sign in to continue");
 }
 
 async function submitAuth(createAccount = false) {
