@@ -62,7 +62,11 @@ class Repository:
             # Supabase exposes the public schema through its Data API by default. Keep
             # authentication, jobs, and the credit ledger in an API-private schema.
             with base_engine.begin() as connection:
-                connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS voiceforge_private")
+                schema_exists = connection.exec_driver_sql(
+                    "SELECT 1 FROM pg_namespace WHERE nspname = 'voiceforge_private'"
+                ).scalar()
+                if not schema_exists:
+                    connection.exec_driver_sql("CREATE SCHEMA voiceforge_private")
             self.engine = base_engine.execution_options(
                 schema_translate_map={None: "voiceforge_private"}
             )
