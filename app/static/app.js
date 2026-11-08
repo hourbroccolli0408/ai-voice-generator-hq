@@ -260,25 +260,39 @@ function drawWaveform(buffer) {
 }
 
 async function prepareAudio(job) {
-  const source = `${job.audio_url}?v=${Date.now()}`;
   elements.player.classList.remove("hidden");
   elements.progressTrack.classList.add("hidden");
   try {
-    const response = await apiFetch(source);
-    if (!response.ok) throw new Error("Could not load generated audio");
-    const blob = await response.blob();
-    if (state.audioObjectUrl) URL.revokeObjectURL(state.audioObjectUrl);
-    state.audioObjectUrl = URL.createObjectURL(blob);
-    elements.audio.src = state.audioObjectUrl;
-    elements.download.href = state.audioObjectUrl;
-    elements.download.download = job.download_name || "voiceover.wav";
-    const buffer = await blob.arrayBuffer();
-    const context = new AudioContext();
-    drawWaveform(await context.decodeAudioData(buffer));
-    await context.close();
-  } catch {
-    // Native playback remains available even if waveform decoding fails.
+    const access = await getAudioAccess(job.id);
+    elements.audio.src = access.url;
+    elements.audio.load();
+    elements.download.dataset.jobId = job.id;
+    elements.download.href = "#";
+    elements.download.download = access.download_name || job.download_name || "voiceover.wav";
+  } catch (error) {
+    toast(error.message, true);
   }
+}
+
+async function getAudioAccess(jobId, download = false) {
+  const response = await apiFetch(
+    `/api/jobs/${jobId}/audio-url${download ? "?download=true" : ""}`,
+  );
+  if (!response.ok) throw new Error(download
+    ? "Could not prepare this download."
+    : "Could not prepare this voiceover for playback.");
+  return response.json();
+}
+
+async function startDownload(jobId) {
+  const access = await getAudioAccess(jobId, true);
+  const anchor = document.createElement("a");
+  anchor.href = access.url;
+  anchor.download = access.download_name || `ai-voice-${jobId.slice(0, 8)}.wav`;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 async function pollJob(jobId) {
@@ -378,7 +392,10 @@ async function loadHistory() {
       </div>
       <div class="history-actions">
         <span class="history-status">${job.status}</span>
-        ${job.audio_url ? `<button type="button" class="history-download" data-job-id="${job.id}">Download ↓</button>` : ""}
+        ${job.audio_url ? `
+          <button type="button" class="history-play" data-job-id="${job.id}">▶ Play</button>
+          <button type="button" class="history-download" data-job-id="${job.id}">Download ↓</button>
+          <audio class="history-audio" preload="none"></audio>` : ""}
       </div>
     </article>`).join("");
 }
@@ -410,17 +427,35 @@ function bindEvents() {
     $("#signout-button").classList.add("hidden");
   });
   $("#history-list").addEventListener("click", async (event) => {
-    const button = event.target.closest(".history-download");
+    const button = event.target.closest(".history-play, .history-download");
     if (!button) return;
-    const response = await apiFetch(`/api/jobs/${button.dataset.jobId}/audio?download=true`);
-    if (!response.ok) return toast("Could not download this voiceover.", true);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `ai-voice-${button.dataset.jobId.slice(0, 8)}.wav`;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      if (button.classList.contains("history-download")) {
+        button.disabled = true;
+        await startDownload(button.dataset.jobId);
+        button.disabled = false;
+        return;
+      }
+      const audio = button.closest(".history-item").querySelector(".history-audio");
+      if (!audio.src) {
+        const access = await getAudioAccess(button.dataset.jobId);
+        audio.src = access.url;
+        audio.load();
+      }
+      if (audio.paused) {
+        document.querySelectorAll(".history-audio").forEach((item) => {
+          if (item !== audio) item.pause();
+        });
+        await audio.play();
+        button.textContent = "❚❚ Pause";
+        audio.addEventListener("pause", () => { button.textContent = "▶ Play"; }, { once: true });
+      } else {
+        audio.pause();
+      }
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message, true);
+    }
   });
   elements.drop.addEventListener("click", () => elements.input.click());
   elements.input.addEventListener("change", () => setFile(elements.input.files[0]));
@@ -456,6 +491,16 @@ function bindEvents() {
   elements.audio.addEventListener("pause", () => { elements.play.textContent = "▶"; });
   elements.audio.addEventListener("timeupdate", () => {
     elements.playerTime.textContent = `${formatTime(elements.audio.currentTime)} / ${formatTime(elements.audio.duration)}`;
+  });
+  elements.download.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const jobId = elements.download.dataset.jobId;
+    if (!jobId) return;
+    try {
+      await startDownload(jobId);
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 }
 

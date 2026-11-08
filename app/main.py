@@ -185,6 +185,34 @@ def get_audio(
     return FileResponse(path, media_type="audio/wav", filename=filename)
 
 
+@app.get("/api/jobs/{job_id}/audio-url")
+def get_audio_url(
+    job_id: str,
+    download: bool = False,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """Return a short-lived direct URL without proxying the WAV through Render."""
+    job = repository.get_job(job_id, user_id)
+    if not job or job.get("status") != "completed":
+        raise HTTPException(status_code=404, detail="Audio is not ready")
+    locator = job.get("audio_locator") or job.get("output_path")
+    if not locator:
+        raise HTTPException(status_code=404, detail="Audio file is unavailable")
+    filename = job.get("download_name") or f"ai-voice-{job_id[:8]}.wav"
+    remote_url = audio_storage.url(locator, filename if download else None)
+    if remote_url:
+        return {"url": remote_url, "download_name": filename, "expires_in": 900}
+    path = Path(locator)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio file is unavailable")
+    suffix = "?download=true" if download else ""
+    return {
+        "url": f"/api/jobs/{job_id}/audio{suffix}",
+        "download_name": filename,
+        "expires_in": None,
+    }
+
+
 @app.post("/api/generate", status_code=202)
 async def generate(
     reference: Annotated[UploadFile, File(...)],

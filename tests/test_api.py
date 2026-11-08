@@ -82,6 +82,10 @@ def test_mock_generation_completes(monkeypatch, tmp_path):
         audio_response = client.get(job["audio_url"])
         assert audio_response.status_code == 200
         assert audio_response.headers["content-type"] == "audio/wav"
+        access_response = client.get(f"/api/jobs/{job_id}/audio-url?download=true")
+        assert access_response.status_code == 200
+        assert access_response.json()["url"].endswith("/audio?download=true")
+        assert access_response.json()["download_name"].endswith(".wav")
         ending_credits = client.get("/api/account").json()["credits"]
         assert ending_credits == starting_credits - len("A small end-to-end test.")
 
