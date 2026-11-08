@@ -32,6 +32,11 @@ RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(
 # depend on a model download during a customer request.
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='facebook/m2m100_418M', revision='e5638106ad0ed9c7e55b757799357940956eda5e', allow_patterns=['config.json', 'generation_config.json', 'pytorch_model.bin', 'sentencepiece.bpe.model', 'special_tokens_map.json', 'tokenizer_config.json', 'vocab.json'])"
 
+# M2M100 tokenization uses the native SentencePiece runtime. Keep this as a
+# separate late layer so model and CUDA dependency layers remain cacheable.
+RUN pip install sentencepiece==0.2.1 \
+    && python -c "import sentencepiece; print(sentencepiece.__version__)"
+
 # spacy-pkuseg hard-codes a five-second download timeout. Bundle its verified
 # model so cold-start generation never depends on a runtime GitHub download.
 COPY build_assets/spacy_ontonotes.zip /tmp/spacy_ontonotes.zip
