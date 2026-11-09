@@ -27,6 +27,11 @@ function renderRoute() {
   $$(".marketing-page").forEach((page) => {
     page.classList.toggle("hidden", isStudio || page.dataset.route !== route);
   });
+  $$(".marketing-links a").forEach((link) => {
+    const isCurrent = link.pathname === window.location.pathname && window.location.pathname !== "/";
+    if (isCurrent) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
   const requiresAuth = state.config?.auth?.mode === "supabase";
   $("#auth-overlay").classList.toggle("hidden", !isStudio || !requiresAuth || Boolean(state.session));
   const titles = {
