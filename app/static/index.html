@@ -112,15 +112,22 @@
 
         <section class="control-section">
           <div class="control-demo">
-            <div class="control-tabs"><span class="active">Energetic</span><span>Natural</span><span>Warm</span><span>Calm</span></div>
-            <div class="control-meter"><span>Speaking speed</span><b>1.1×</b><i><em></em></i></div>
-            <div class="control-meter"><span>Expression</span><b>78%</b><i><em style="width:78%"></em></i></div>
-            <div class="control-meter"><span>Variation</span><b>1.0</b><i><em style="width:68%"></em></i></div>
+            <div class="control-tabs" role="group" aria-label="Preview a delivery preset">
+              <button type="button" class="active" data-marketing-preset="energetic" aria-pressed="true">Energetic</button>
+              <button type="button" data-marketing-preset="natural" aria-pressed="false">Natural</button>
+              <button type="button" data-marketing-preset="warm" aria-pressed="false">Warm</button>
+              <button type="button" data-marketing-preset="calm" aria-pressed="false">Calm</button>
+            </div>
+            <p class="control-summary" id="control-summary" aria-live="polite">Energetic adds quicker pacing, stronger expression and wider variation.</p>
+            <div class="control-meter"><span>Speaking speed</span><b id="demo-speed">1.1×</b><i><em id="demo-speed-meter" style="width:70%"></em></i></div>
+            <div class="control-meter"><span>Expression</span><b id="demo-expression">78%</b><i><em id="demo-expression-meter" style="width:78%"></em></i></div>
+            <div class="control-meter"><span>Variation</span><b id="demo-variation">1.0</b><i><em id="demo-variation-meter" style="width:80%"></em></i></div>
           </div>
           <div class="voice-copy">
             <p class="kicker">DIRECTION WITHOUT THE DRAMA</p>
             <h2>Make the voice perform.</h2>
-            <p>Shape tempo, expression and variation with controls creators understand. Generate two candidate takes when you want options.</p>
+            <p>Choose a preset to see the actual studio variables change, then carry those settings into your next generation.</p>
+            <a class="text-cta control-cta" id="control-cta" href="/studio?preset=energetic">Use Energetic in Studio <span>→</span></a>
           </div>
         </section>
 
@@ -408,11 +415,11 @@
                 <div class="delivery-tools">
                   <div class="preset-heading"><span>Delivery</span><small>One-click direction</small></div>
                   <div class="delivery-presets" role="group" aria-label="Delivery presets">
-                    <button type="button" class="delivery-preset active" data-preset="natural">Natural</button>
-                    <button type="button" class="delivery-preset" data-preset="warm">Warm</button>
-                    <button type="button" class="delivery-preset" data-preset="energetic">Energetic</button>
-                    <button type="button" class="delivery-preset" data-preset="dramatic">Dramatic</button>
-                    <button type="button" class="delivery-preset" data-preset="calm">Calm</button>
+                    <button type="button" class="delivery-preset active" data-preset="natural" aria-pressed="true">Natural</button>
+                    <button type="button" class="delivery-preset" data-preset="warm" aria-pressed="false">Warm</button>
+                    <button type="button" class="delivery-preset" data-preset="energetic" aria-pressed="false">Energetic</button>
+                    <button type="button" class="delivery-preset" data-preset="dramatic" aria-pressed="false">Dramatic</button>
+                    <button type="button" class="delivery-preset" data-preset="calm" aria-pressed="false">Calm</button>
                   </div>
                   <div class="delivery-selects">
                     <label><span>Speaking speed</span><select id="speed" name="speed">

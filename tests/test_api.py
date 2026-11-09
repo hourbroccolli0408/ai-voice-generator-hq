@@ -52,6 +52,8 @@ def test_public_marketing_routes(monkeypatch, tmp_path):
         pricing = client.get("/pricing").text
         assert "FOUNDER PRICING" in pricing
         assert "Hear the quality before you sign up" in home
+        assert 'data-marketing-preset="energetic"' in home
+        assert '/studio?preset=energetic' in home
         assert "5,000 one-time starter credits" in pricing
         for voice in ("heart", "emma", "michael", "george"):
             sample = client.get(f"/audio/voices/{voice}.mp3")

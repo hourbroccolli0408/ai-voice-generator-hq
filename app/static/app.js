@@ -19,6 +19,21 @@ const publicSamplePlayer = new Audio();
 publicSamplePlayer.preload = "metadata";
 let activePublicSample = null;
 
+const DELIVERY_PRESETS = {
+  natural: { exaggeration: .5, cfg: .5, temperature: .8, speed: 1 },
+  warm: { exaggeration: .6, cfg: .45, temperature: .75, speed: .9 },
+  energetic: { exaggeration: .78, cfg: .35, temperature: 1, speed: 1.1 },
+  dramatic: { exaggeration: .9, cfg: .3, temperature: .9, speed: .9 },
+  calm: { exaggeration: .3, cfg: .65, temperature: .65, speed: .9 },
+};
+
+const MARKETING_PRESET_COPY = {
+  natural: "Natural keeps the pacing balanced with a clear, dependable delivery.",
+  warm: "Warm slows the pace slightly and adds a more reassuring expression.",
+  energetic: "Energetic adds quicker pacing, stronger expression and wider variation.",
+  calm: "Calm uses measured pacing, lighter expression and controlled variation.",
+};
+
 function resetPublicSampleButton(button) {
   if (!button) return;
   button.classList.remove("is-playing");
@@ -63,6 +78,56 @@ function bindPublicSamples() {
   publicSamplePlayer.addEventListener("ended", () => {
     resetPublicSampleButton(activePublicSample);
     activePublicSample = null;
+  });
+}
+
+function presetLabel(name) {
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+function renderMarketingPreset(name) {
+  const preset = DELIVERY_PRESETS[name];
+  if (!preset || !MARKETING_PRESET_COPY[name]) return;
+  const speedWidth = Math.round(((preset.speed - .75) / .5) * 100);
+  const expression = Math.round(preset.exaggeration * 100);
+  const variationWidth = Math.round(preset.temperature * 80);
+  $("#demo-speed").textContent = `${preset.speed.toFixed(1)}×`;
+  $("#demo-expression").textContent = `${expression}%`;
+  $("#demo-variation").textContent = preset.temperature.toFixed(2).replace(/0$/, "");
+  $("#demo-speed-meter").style.width = `${speedWidth}%`;
+  $("#demo-expression-meter").style.width = `${expression}%`;
+  $("#demo-variation-meter").style.width = `${variationWidth}%`;
+  $("#control-summary").textContent = MARKETING_PRESET_COPY[name];
+  const callToAction = $("#control-cta");
+  callToAction.href = `/studio?preset=${name}`;
+  callToAction.firstChild.textContent = `Use ${presetLabel(name)} in Studio `;
+  $$("[data-marketing-preset]").forEach((button) => {
+    const active = button.dataset.marketingPreset === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function bindMarketingPresets() {
+  $$("[data-marketing-preset]").forEach((button) => {
+    button.addEventListener("click", () => renderMarketingPreset(button.dataset.marketingPreset));
+  });
+}
+
+function applyStudioPreset(name) {
+  const preset = DELIVERY_PRESETS[name];
+  if (!preset) return;
+  $("#exaggeration").value = preset.exaggeration;
+  $("#cfg-weight").value = preset.cfg;
+  $("#temperature").value = preset.temperature;
+  $("#speed").value = String(preset.speed);
+  $("#exaggeration-value").value = `${Math.round(preset.exaggeration * 100)}%`;
+  $("#cfg-value").value = `${Math.round(preset.cfg * 100)}%`;
+  $("#temperature-value").value = preset.temperature.toFixed(1);
+  $$(".delivery-preset").forEach((button) => {
+    const active = button.dataset.preset === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
 }
 
@@ -732,6 +797,7 @@ function switchView(view) {
 
 function bindEvents() {
   bindPublicSamples();
+  bindMarketingPresets();
   $("#auth-form").addEventListener("submit", (event) => {
     event.preventDefault();
     submitAuth(false);
@@ -808,23 +874,10 @@ function bindEvents() {
   elements.voiceGender.addEventListener("change", filterVoices);
   $("#variations").addEventListener("change", updateScriptMeta);
   $$(".delivery-preset").forEach((button) => button.addEventListener("click", () => {
-    const presets = {
-      natural: { exaggeration: .5, cfg: .5, temperature: .8, speed: 1 },
-      warm: { exaggeration: .6, cfg: .45, temperature: .75, speed: .9 },
-      energetic: { exaggeration: .78, cfg: .35, temperature: 1, speed: 1.1 },
-      dramatic: { exaggeration: .9, cfg: .3, temperature: .9, speed: .9 },
-      calm: { exaggeration: .3, cfg: .65, temperature: .65, speed: .9 },
-    };
-    const preset = presets[button.dataset.preset];
-    $("#exaggeration").value = preset.exaggeration;
-    $("#cfg-weight").value = preset.cfg;
-    $("#temperature").value = preset.temperature;
-    $("#speed").value = String(preset.speed);
-    $("#exaggeration-value").value = `${Math.round(preset.exaggeration * 100)}%`;
-    $("#cfg-value").value = `${Math.round(preset.cfg * 100)}%`;
-    $("#temperature-value").value = preset.temperature.toFixed(1);
-    $$(".delivery-preset").forEach((item) => item.classList.toggle("active", item === button));
+    applyStudioPreset(button.dataset.preset);
   }));
+  const requestedPreset = new URLSearchParams(window.location.search).get("preset");
+  if (requestedPreset) applyStudioPreset(requestedPreset);
   elements.form.addEventListener("submit", submitGeneration);
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   $(".mobile-menu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
