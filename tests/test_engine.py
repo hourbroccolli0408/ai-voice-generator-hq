@@ -1,5 +1,6 @@
 import shutil
 import wave
+from pathlib import Path
 
 import pytest
 
@@ -58,4 +59,14 @@ def test_speed_control_changes_duration_without_corrupting_wav(tmp_path):
     with wave.open(str(path), "rb") as audio:
         duration = audio.getnframes() / audio.getframerate()
     assert 1.5 < duration < 1.7
+
+
+def test_worker_image_bundles_every_ready_made_voice():
+    dockerfile = (Path(__file__).parents[1] / "Dockerfile.worker").read_text()
+    engine_voices = {
+        voice["engine_voice"]
+        for voice in VOICE_OPTIONS.values()
+        if voice["engine"] == "kokoro"
+    }
+    assert all(f"voices/{voice}.pt" in dockerfile for voice in engine_voices)
 

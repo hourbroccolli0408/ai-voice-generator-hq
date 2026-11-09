@@ -26,7 +26,7 @@ RUN pip install --upgrade pip \
     && python -c "import torch; assert torch.__version__.startswith('2.7.1'); assert torch.version.cuda.startswith('12.8'); print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list())"
 
 # Keep ready-made voices independent of Hugging Face availability during a request.
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='hexgrad/Kokoro-82M', allow_patterns=['config.json', 'kokoro-v1_0.pth', 'voices/af_heart.pt', 'voices/af_bella.pt', 'voices/am_michael.pt', 'voices/bf_emma.pt', 'voices/bm_george.pt', 'voices/af_nicole.pt'])"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='hexgrad/Kokoro-82M', allow_patterns=['config.json', 'kokoro-v1_0.pth', 'voices/af_heart.pt', 'voices/af_alloy.pt', 'voices/af_aoede.pt', 'voices/af_bella.pt', 'voices/af_jessica.pt', 'voices/af_kore.pt', 'voices/af_nicole.pt', 'voices/af_nova.pt', 'voices/af_river.pt', 'voices/af_sarah.pt', 'voices/af_sky.pt', 'voices/am_adam.pt', 'voices/am_echo.pt', 'voices/am_eric.pt', 'voices/am_fenrir.pt', 'voices/am_liam.pt', 'voices/am_michael.pt', 'voices/am_onyx.pt', 'voices/am_puck.pt', 'voices/bf_alice.pt', 'voices/bf_emma.pt', 'voices/bf_isabella.pt', 'voices/bf_lily.pt', 'voices/bm_daniel.pt', 'voices/bm_fable.pt', 'voices/bm_george.pt', 'voices/bm_lewis.pt'])"
 
 # Bundle Meta's MIT-licensed 100-language translator so translation jobs do not
 # depend on a model download during a customer request.
