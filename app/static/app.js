@@ -15,6 +15,57 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+const publicSamplePlayer = new Audio();
+publicSamplePlayer.preload = "metadata";
+let activePublicSample = null;
+
+function resetPublicSampleButton(button) {
+  if (!button) return;
+  button.classList.remove("is-playing");
+  button.setAttribute("aria-pressed", "false");
+  const icon = button.querySelector(".sample-play-icon");
+  const label = button.querySelector("[data-sample-state]");
+  if (icon) icon.textContent = "▶";
+  if (label) label.textContent = "Play sample";
+}
+
+function bindPublicSamples() {
+  $$(".public-sample-trigger").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (activePublicSample === button) {
+        if (!publicSamplePlayer.paused) {
+          publicSamplePlayer.pause();
+          return;
+        }
+      } else {
+        resetPublicSampleButton(activePublicSample);
+        activePublicSample = button;
+        publicSamplePlayer.src = button.dataset.sampleSrc;
+        publicSamplePlayer.currentTime = 0;
+      }
+
+      button.classList.add("is-playing");
+      button.setAttribute("aria-pressed", "true");
+      const icon = button.querySelector(".sample-play-icon");
+      const label = button.querySelector("[data-sample-state]");
+      if (icon) icon.textContent = "❚❚";
+      if (label) label.textContent = "Pause";
+      try {
+        await publicSamplePlayer.play();
+      } catch (error) {
+        resetPublicSampleButton(button);
+        activePublicSample = null;
+        toast("This sample could not be played. Please try again.", true);
+      }
+    });
+  });
+  publicSamplePlayer.addEventListener("pause", () => resetPublicSampleButton(activePublicSample));
+  publicSamplePlayer.addEventListener("ended", () => {
+    resetPublicSampleButton(activePublicSample);
+    activePublicSample = null;
+  });
+}
+
 function renderRoute() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const isStudio = path === "/studio";
@@ -680,6 +731,7 @@ function switchView(view) {
 }
 
 function bindEvents() {
+  bindPublicSamples();
   $("#auth-form").addEventListener("submit", (event) => {
     event.preventDefault();
     submitAuth(false);

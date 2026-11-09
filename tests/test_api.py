@@ -48,7 +48,15 @@ def test_public_marketing_routes(monkeypatch, tmp_path):
             response = client.get(route)
             assert response.status_code == 200
             assert "AI Voice HQ" in response.text
-        assert "FOUNDER PRICING" in client.get("/pricing").text
+        home = client.get("/").text
+        pricing = client.get("/pricing").text
+        assert "FOUNDER PRICING" in pricing
+        assert "Hear the quality before you sign up" in home
+        assert "5,000 one-time starter credits" in pricing
+        for voice in ("heart", "emma", "michael", "george"):
+            sample = client.get(f"/audio/voices/{voice}.mp3")
+            assert sample.status_code == 200
+            assert sample.headers["content-type"] == "audio/mpeg"
 
 
 def test_generation_requires_consent(monkeypatch, tmp_path):
