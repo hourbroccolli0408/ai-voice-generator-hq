@@ -61,6 +61,7 @@ class RunPodEngine:
             "exaggeration": options.exaggeration,
             "cfg_weight": options.cfg_weight,
             "temperature": options.temperature,
+            "speed": options.speed,
         }
         if reference_path is not None:
             payload["reference_audio"] = base64.b64encode(

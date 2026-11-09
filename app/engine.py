@@ -81,6 +81,9 @@ VOICE_OPTIONS = {
         "label": "Heart",
         "description": "Warm, natural American voice",
         "accent": "American",
+        "gender": "Female",
+        "style": "Warm",
+        "use_cases": ["Narration", "Wellness", "Audiobooks"],
         "engine": "kokoro",
         "engine_voice": "af_heart",
         "language_code": "a",
@@ -90,6 +93,9 @@ VOICE_OPTIONS = {
         "label": "Bella",
         "description": "Expressive American voice",
         "accent": "American",
+        "gender": "Female",
+        "style": "Expressive",
+        "use_cases": ["Advertising", "Social", "Characters"],
         "engine": "kokoro",
         "engine_voice": "af_bella",
         "language_code": "a",
@@ -99,6 +105,9 @@ VOICE_OPTIONS = {
         "label": "Michael",
         "description": "Grounded American voice",
         "accent": "American",
+        "gender": "Male",
+        "style": "Grounded",
+        "use_cases": ["Documentary", "Corporate", "Audiobooks"],
         "engine": "kokoro",
         "engine_voice": "am_michael",
         "language_code": "a",
@@ -108,6 +117,9 @@ VOICE_OPTIONS = {
         "label": "Emma",
         "description": "Clear, polished British voice",
         "accent": "British",
+        "gender": "Female",
+        "style": "Polished",
+        "use_cases": ["E-learning", "Corporate", "Narration"],
         "engine": "kokoro",
         "engine_voice": "bf_emma",
         "language_code": "b",
@@ -117,6 +129,9 @@ VOICE_OPTIONS = {
         "label": "George",
         "description": "Calm British voice",
         "accent": "British",
+        "gender": "Male",
+        "style": "Calm",
+        "use_cases": ["Documentary", "Audiobooks", "News"],
         "engine": "kokoro",
         "engine_voice": "bm_george",
         "language_code": "b",
@@ -126,6 +141,9 @@ VOICE_OPTIONS = {
         "label": "Nicole",
         "description": "Confident American narrator",
         "accent": "American",
+        "gender": "Female",
+        "style": "Confident",
+        "use_cases": ["Advertising", "News", "Presentations"],
         "engine": "kokoro",
         "engine_voice": "af_nicole",
         "language_code": "a",
@@ -135,10 +153,152 @@ VOICE_OPTIONS = {
         "label": "Clone my voice",
         "description": "Upload or record an authorized voice sample",
         "accent": "Custom",
+        "gender": "Custom",
+        "style": "Custom",
+        "use_cases": ["Brand voice", "Personal voice"],
         "engine": "chatterbox",
         "languages": list(SUPPORTED_LANGUAGES),
     },
 }
+
+# Kokoro's Apache-2.0 voice pack gives us a credible ready-made catalogue without
+# pretending that minor parameter changes are separate voices. The six original
+# launch voices above remain stable so existing saved jobs never change identity.
+VOICE_OPTIONS.update(
+    {
+        "alloy": {
+            "label": "Alloy", "description": "Balanced and conversational American voice",
+            "accent": "American", "gender": "Female", "style": "Conversational",
+            "use_cases": ["Support", "Podcasts", "E-learning"], "engine": "kokoro",
+            "engine_voice": "af_alloy", "language_code": "a", "languages": ["en"],
+        },
+        "aoede": {
+            "label": "Aoede", "description": "Bright American storyteller",
+            "accent": "American", "gender": "Female", "style": "Bright",
+            "use_cases": ["Stories", "Social", "Advertising"], "engine": "kokoro",
+            "engine_voice": "af_aoede", "language_code": "a", "languages": ["en"],
+        },
+        "jessica": {
+            "label": "Jessica", "description": "Friendly, clear American presenter",
+            "accent": "American", "gender": "Female", "style": "Friendly",
+            "use_cases": ["Presentations", "Support", "E-learning"], "engine": "kokoro",
+            "engine_voice": "af_jessica", "language_code": "a", "languages": ["en"],
+        },
+        "kore": {
+            "label": "Kore", "description": "Direct American voice with a modern edge",
+            "accent": "American", "gender": "Female", "style": "Direct",
+            "use_cases": ["Technology", "Advertising", "News"], "engine": "kokoro",
+            "engine_voice": "af_kore", "language_code": "a", "languages": ["en"],
+        },
+        "nova": {
+            "label": "Nova", "description": "Energetic American creator voice",
+            "accent": "American", "gender": "Female", "style": "Energetic",
+            "use_cases": ["Social", "Advertising", "Podcasts"], "engine": "kokoro",
+            "engine_voice": "af_nova", "language_code": "a", "languages": ["en"],
+        },
+        "river": {
+            "label": "River", "description": "Relaxed and thoughtful American voice",
+            "accent": "American", "gender": "Female", "style": "Relaxed",
+            "use_cases": ["Wellness", "Podcasts", "Narration"], "engine": "kokoro",
+            "engine_voice": "af_river", "language_code": "a", "languages": ["en"],
+        },
+        "sarah": {
+            "label": "Sarah", "description": "Warm American explainer voice",
+            "accent": "American", "gender": "Female", "style": "Reassuring",
+            "use_cases": ["E-learning", "Healthcare", "Support"], "engine": "kokoro",
+            "engine_voice": "af_sarah", "language_code": "a", "languages": ["en"],
+        },
+        "sky": {
+            "label": "Sky", "description": "Youthful American voice for short-form content",
+            "accent": "American", "gender": "Female", "style": "Youthful",
+            "use_cases": ["Social", "Characters", "Advertising"], "engine": "kokoro",
+            "engine_voice": "af_sky", "language_code": "a", "languages": ["en"],
+        },
+        "adam": {
+            "label": "Adam", "description": "Deep American cinematic narrator",
+            "accent": "American", "gender": "Male", "style": "Cinematic",
+            "use_cases": ["Trailers", "Documentary", "Audiobooks"], "engine": "kokoro",
+            "engine_voice": "am_adam", "language_code": "a", "languages": ["en"],
+        },
+        "echo": {
+            "label": "Echo", "description": "Clean American technology voice",
+            "accent": "American", "gender": "Male", "style": "Modern",
+            "use_cases": ["Technology", "Support", "Presentations"], "engine": "kokoro",
+            "engine_voice": "am_echo", "language_code": "a", "languages": ["en"],
+        },
+        "eric": {
+            "label": "Eric", "description": "Approachable American professional",
+            "accent": "American", "gender": "Male", "style": "Professional",
+            "use_cases": ["Corporate", "Support", "E-learning"], "engine": "kokoro",
+            "engine_voice": "am_eric", "language_code": "a", "languages": ["en"],
+        },
+        "fenrir": {
+            "label": "Fenrir", "description": "Bold American character voice",
+            "accent": "American", "gender": "Male", "style": "Bold",
+            "use_cases": ["Gaming", "Characters", "Trailers"], "engine": "kokoro",
+            "engine_voice": "am_fenrir", "language_code": "a", "languages": ["en"],
+        },
+        "liam": {
+            "label": "Liam", "description": "Easygoing American conversational voice",
+            "accent": "American", "gender": "Male", "style": "Easygoing",
+            "use_cases": ["Podcasts", "Support", "Social"], "engine": "kokoro",
+            "engine_voice": "am_liam", "language_code": "a", "languages": ["en"],
+        },
+        "onyx": {
+            "label": "Onyx", "description": "Authoritative American announcer",
+            "accent": "American", "gender": "Male", "style": "Authoritative",
+            "use_cases": ["News", "Advertising", "Documentary"], "engine": "kokoro",
+            "engine_voice": "am_onyx", "language_code": "a", "languages": ["en"],
+        },
+        "puck": {
+            "label": "Puck", "description": "Playful American character voice",
+            "accent": "American", "gender": "Male", "style": "Playful",
+            "use_cases": ["Characters", "Gaming", "Social"], "engine": "kokoro",
+            "engine_voice": "am_puck", "language_code": "a", "languages": ["en"],
+        },
+        "alice": {
+            "label": "Alice", "description": "Elegant British storyteller",
+            "accent": "British", "gender": "Female", "style": "Elegant",
+            "use_cases": ["Audiobooks", "Luxury", "Documentary"], "engine": "kokoro",
+            "engine_voice": "bf_alice", "language_code": "b", "languages": ["en"],
+        },
+        "isabella": {
+            "label": "Isabella", "description": "Warm British lifestyle voice",
+            "accent": "British", "gender": "Female", "style": "Warm",
+            "use_cases": ["Lifestyle", "Advertising", "Narration"], "engine": "kokoro",
+            "engine_voice": "bf_isabella", "language_code": "b", "languages": ["en"],
+        },
+        "lily": {
+            "label": "Lily", "description": "Soft British voice for calm narration",
+            "accent": "British", "gender": "Female", "style": "Soft",
+            "use_cases": ["Wellness", "Audiobooks", "E-learning"], "engine": "kokoro",
+            "engine_voice": "bf_lily", "language_code": "b", "languages": ["en"],
+        },
+        "daniel": {
+            "label": "Daniel", "description": "Assured British professional voice",
+            "accent": "British", "gender": "Male", "style": "Assured",
+            "use_cases": ["Corporate", "News", "Presentations"], "engine": "kokoro",
+            "engine_voice": "bm_daniel", "language_code": "b", "languages": ["en"],
+        },
+        "fable": {
+            "label": "Fable", "description": "Expressive British story voice",
+            "accent": "British", "gender": "Male", "style": "Expressive",
+            "use_cases": ["Audiobooks", "Gaming", "Characters"], "engine": "kokoro",
+            "engine_voice": "bm_fable", "language_code": "b", "languages": ["en"],
+        },
+        "lewis": {
+            "label": "Lewis", "description": "Measured British documentary voice",
+            "accent": "British", "gender": "Male", "style": "Measured",
+            "use_cases": ["Documentary", "E-learning", "Corporate"], "engine": "kokoro",
+            "engine_voice": "bm_lewis", "language_code": "b", "languages": ["en"],
+        },
+    }
+)
+
+for _voice in VOICE_OPTIONS.values():
+    _voice.setdefault("gender", "Neutral")
+    _voice.setdefault("style", "Natural")
+    _voice.setdefault("use_cases", ["Voiceover"])
 
 
 @dataclass(slots=True)
@@ -149,6 +309,29 @@ class GenerationOptions:
     cfg_weight: float
     temperature: float
     voice: str = "clone"
+    speed: float = 1.0
+
+
+def adjust_audio_speed(path: Path, speed: float) -> None:
+    """Apply studio pacing without changing pitch."""
+    if abs(speed - 1.0) < 0.01:
+        return
+    if not 0.75 <= speed <= 1.25:
+        raise ValueError("Speaking speed must be between 0.75x and 1.25x")
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("Speaking-speed control requires FFmpeg")
+    temporary = path.with_name(f"{path.stem}-paced{path.suffix}")
+    result = subprocess.run(
+        [ffmpeg, "-y", "-i", str(path), "-filter:a", f"atempo={speed}", str(temporary)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    if result.returncode != 0 or not temporary.exists():
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError("Could not apply the selected speaking speed")
+    temporary.replace(path)
 
 
 def split_text(text: str, max_chars: int = 420) -> list[str]:
@@ -374,6 +557,7 @@ class ModelManager:
                 )
                 combined = torch.from_numpy(marked).reshape(1, -1)
             torchaudio.save(str(output_path), combined, sample_rate)
+            adjust_audio_speed(output_path, options.speed)
 
     def translate(
         self,

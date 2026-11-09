@@ -88,10 +88,20 @@
                   </div>
                 </div>
 
-                <label class="voice-picker">
-                  <span>Voice</span>
-                  <select id="voice" name="voice"></select>
-                </label>
+                <div class="voice-browser">
+                  <label class="voice-search">
+                    <span>Find a voice</span>
+                    <input id="voice-search" type="search" placeholder="Search name, style or use…" autocomplete="off" />
+                  </label>
+                  <div class="voice-filters">
+                    <select id="voice-accent" aria-label="Filter voices by accent"><option value="">All accents</option></select>
+                    <select id="voice-gender" aria-label="Filter voices by gender"><option value="">All voices</option></select>
+                  </div>
+                  <label class="voice-picker">
+                    <span>Voice <small id="voice-count"></small></span>
+                    <select id="voice" name="voice"></select>
+                  </label>
+                </div>
                 <p class="voice-description" id="voice-description"></p>
 
                 <div class="preset-ready" id="preset-ready">
@@ -197,6 +207,30 @@
                     <span>Language</span>
                     <select id="language" name="language"></select>
                   </label>
+                </div>
+
+                <div class="delivery-tools">
+                  <div class="preset-heading"><span>Delivery</span><small>One-click direction</small></div>
+                  <div class="delivery-presets" role="group" aria-label="Delivery presets">
+                    <button type="button" class="delivery-preset active" data-preset="natural">Natural</button>
+                    <button type="button" class="delivery-preset" data-preset="warm">Warm</button>
+                    <button type="button" class="delivery-preset" data-preset="energetic">Energetic</button>
+                    <button type="button" class="delivery-preset" data-preset="dramatic">Dramatic</button>
+                    <button type="button" class="delivery-preset" data-preset="calm">Calm</button>
+                  </div>
+                  <div class="delivery-selects">
+                    <label><span>Speaking speed</span><select id="speed" name="speed">
+                      <option value="0.75">0.75× · Slow</option>
+                      <option value="0.9">0.9× · Relaxed</option>
+                      <option value="1" selected>1× · Natural</option>
+                      <option value="1.1">1.1× · Brisk</option>
+                      <option value="1.25">1.25× · Fast</option>
+                    </select></label>
+                    <label id="takes-control"><span>Candidate takes</span><select id="variations" name="variations">
+                      <option value="1">1 take · standard credits</option>
+                      <option value="2">2 takes · double credits</option>
+                    </select></label>
+                  </div>
                 </div>
 
                 <details class="advanced" id="advanced-controls">

@@ -29,6 +29,9 @@ const elements = {
   script: $("#script"),
   count: $("#char-count"),
   voice: $("#voice"),
+  voiceSearch: $("#voice-search"),
+  voiceAccent: $("#voice-accent"),
+  voiceGender: $("#voice-gender"),
   voiceDescription: $("#voice-description"),
   cloneControls: $("#clone-controls"),
   presetReady: $("#preset-ready"),
@@ -158,6 +161,7 @@ function clearFile(event) {
 
 function updateScriptMeta() {
   const length = elements.script.value.length;
+  const variations = Number($("#variations").value || 1);
   elements.count.textContent = length.toLocaleString();
   if (elements.translateMode.checked) {
     const targets = selectedTargetLanguages();
@@ -167,8 +171,10 @@ function updateScriptMeta() {
       ? `${length.toLocaleString()} characters × ${targets.length} languages = ${(length * targets.length).toLocaleString()} credits.`
       : "Choose output languages to see the credit cost.";
   } else {
-    $("#duration-estimate").textContent = `~${Math.max(0, Math.round(length / 15))} sec`;
-    $("#estimate-label").textContent = "estimated audio";
+    $("#duration-estimate").textContent = (length * variations).toLocaleString();
+    $("#estimate-label").textContent = variations > 1
+      ? `credits for ${variations} takes`
+      : "credits";
   }
 }
 
@@ -208,6 +214,8 @@ function renderTranslationMode() {
   const translating = elements.translateMode.checked;
   elements.translateOptions.classList.toggle("hidden", !translating);
   $("#language-control").classList.toggle("hidden", translating);
+  $("#takes-control").classList.toggle("hidden", translating);
+  if (translating) $("#variations").value = "1";
   elements.submit.querySelector("span").textContent = translating
     ? "Translate & generate"
     : "Generate voiceover";
@@ -222,9 +230,43 @@ function renderTranslationMode() {
   updateScriptMeta();
 }
 
+function voiceSearchText(voice) {
+  return [voice.label, voice.description, voice.accent, voice.gender, voice.style, ...(voice.use_cases || [])]
+    .join(" ")
+    .toLowerCase();
+}
+
+function filterVoices() {
+  const query = elements.voiceSearch.value.trim().toLowerCase();
+  const accent = elements.voiceAccent.value;
+  const gender = elements.voiceGender.value;
+  const previous = elements.voice.value;
+  const matches = Object.entries(state.config.voices).filter(([, voice]) => (
+    (!query || voiceSearchText(voice).includes(query))
+    && (!accent || voice.accent === accent)
+    && (!gender || voice.gender === gender)
+  ));
+  elements.voice.innerHTML = matches
+    .map(([value, voice]) => `<option value="${value}">${escapeHtml(voice.label)} — ${escapeHtml(voice.accent)} · ${escapeHtml(voice.style)}</option>`)
+    .join("");
+  $("#voice-count").textContent = `${matches.length} available`;
+  if (!matches.length) {
+    elements.voice.innerHTML = '<option value="">No matching voices</option>';
+    elements.voice.disabled = true;
+    elements.submit.disabled = true;
+    elements.voiceDescription.textContent = "Try clearing one of the voice filters.";
+    return;
+  }
+  elements.voice.disabled = false;
+  elements.submit.disabled = false;
+  elements.voice.value = matches.some(([value]) => value === previous) ? previous : matches[0][0];
+  renderVoiceMode();
+}
+
 function renderLanguages() {
   const model = state.config.models[elements.model.value];
   const voice = state.config.voices[elements.voice.value];
+  if (!model || !voice) return;
   const previous = elements.language.value;
   const languages = isCloneMode()
     ? model.languages
@@ -235,13 +277,15 @@ function renderLanguages() {
   elements.language.value = languages.includes(previous)
     ? previous
     : (languages.includes("en") ? "en" : languages[0]);
-  const advancedDisabled = !isCloneMode() || elements.model.value !== "multilingual-v3";
+  const advancedDisabled = !["chatterbox", "chatterbox-default"].includes(voice.engine)
+    || elements.model.value !== "multilingual-v3";
   $("#exaggeration").disabled = advancedDisabled;
   $("#cfg-weight").disabled = advancedDisabled;
 }
 
 function renderVoiceMode() {
   let voice = state.config.voices[elements.voice.value];
+  if (!voice) return;
   if (
     elements.translateMode.checked
     && !["chatterbox", "chatterbox-default"].includes(voice.engine)
@@ -250,11 +294,12 @@ function renderVoiceMode() {
     voice = state.config.voices.global;
   }
   const cloning = isCloneMode();
-  elements.voiceDescription.textContent = `${voice.description} · ${voice.accent}`;
+  elements.voiceDescription.textContent = `${voice.description} · ${voice.gender} · ${(voice.use_cases || []).join(", ")}`;
   elements.cloneControls.classList.toggle("hidden", !cloning);
   elements.presetReady.classList.toggle("hidden", cloning);
   $("#model-control").classList.toggle("hidden", !cloning || elements.translateMode.checked);
-  $("#advanced-controls").classList.toggle("hidden", !cloning);
+  const supportsDirection = ["chatterbox", "chatterbox-default"].includes(voice.engine);
+  $("#advanced-controls").classList.toggle("hidden", !supportsDirection);
   if (elements.translateMode.checked) elements.model.value = "multilingual-v3";
   renderLanguages();
 }
@@ -264,14 +309,17 @@ async function loadConfig() {
   state.config = await configResponse.json();
   const health = await healthResponse.json();
   await initAuth();
-  elements.voice.innerHTML = Object.entries(state.config.voices)
-    .map(([value, voice]) => `<option value="${value}">${voice.label} — ${voice.accent}</option>`)
-    .join("");
-  elements.voice.value = "heart";
+  const voices = Object.values(state.config.voices);
+  elements.voiceAccent.innerHTML += [...new Set(voices.map((voice) => voice.accent))]
+    .sort().map((value) => `<option value="${value}">${value}</option>`).join("");
+  elements.voiceGender.innerHTML += [...new Set(voices.map((voice) => voice.gender))]
+    .sort().map((value) => `<option value="${value}">${value}</option>`).join("");
   elements.model.innerHTML = Object.entries(state.config.models)
     .map(([value, model]) => `<option value="${value}">${model.label}</option>`)
     .join("");
   elements.model.value = health.device === "cpu" ? "nano" : "multilingual-v3";
+  filterVoices();
+  if ([...elements.voice.options].some((option) => option.value === "heart")) elements.voice.value = "heart";
   elements.sourceLanguage.innerHTML = [
     '<option value="auto">Auto-detect</option>',
     ...state.config.translation.source_languages.map(
@@ -370,24 +418,36 @@ function drawWaveform(buffer) {
   }
 }
 
-async function prepareAudio(job, requestedLanguage = null) {
+async function prepareAudio(job, requestedLanguage = null, requestedTake = null) {
   elements.player.classList.remove("hidden");
   elements.progressTrack.classList.add("hidden");
   try {
     const outputs = job.outputs || [];
+    const takes = job.takes || [];
     const language = requestedLanguage || outputs[0]?.language || null;
-    elements.outputLanguageControl.classList.toggle("hidden", outputs.length < 2);
+    const take = requestedTake || takes[0]?.take || null;
+    elements.outputLanguageControl.classList.toggle("hidden", outputs.length < 2 && takes.length < 2);
     if (outputs.length) {
       elements.outputLanguage.innerHTML = outputs
         .map((output) => `<option value="${output.language}">${escapeHtml(output.language_label)}</option>`)
         .join("");
       elements.outputLanguage.value = language;
+      elements.outputLanguage.dataset.mode = "language";
+      elements.outputLanguageControl.querySelector("span").textContent = "Playing language";
+    } else if (takes.length) {
+      elements.outputLanguage.innerHTML = takes
+        .map((item) => `<option value="${item.take}">${escapeHtml(item.label)}</option>`)
+        .join("");
+      elements.outputLanguage.value = String(take);
+      elements.outputLanguage.dataset.mode = "take";
+      elements.outputLanguageControl.querySelector("span").textContent = "Playing version";
     }
-    const access = await getAudioAccess(job.id, false, language);
+    const access = await getAudioAccess(job.id, false, language, take);
     elements.audio.src = access.url;
     elements.audio.load();
     elements.download.dataset.jobId = job.id;
     elements.download.dataset.language = language || "";
+    elements.download.dataset.take = take || "";
     elements.download.href = "#";
     elements.download.download = access.download_name || job.download_name || "voiceover.wav";
   } catch (error) {
@@ -395,10 +455,11 @@ async function prepareAudio(job, requestedLanguage = null) {
   }
 }
 
-async function getAudioAccess(jobId, download = false, language = null) {
+async function getAudioAccess(jobId, download = false, language = null, take = null) {
   const parameters = new URLSearchParams();
   if (download) parameters.set("download", "true");
   if (language) parameters.set("language", language);
+  if (take) parameters.set("take", take);
   const query = parameters.toString();
   const response = await apiFetch(`/api/jobs/${jobId}/audio-url${query ? `?${query}` : ""}`);
   if (!response.ok) throw new Error(download
@@ -407,8 +468,8 @@ async function getAudioAccess(jobId, download = false, language = null) {
   return response.json();
 }
 
-async function startDownload(jobId, language = null) {
-  const access = await getAudioAccess(jobId, true, language);
+async function startDownload(jobId, language = null, take = null) {
+  const access = await getAudioAccess(jobId, true, language, take);
   const anchor = document.createElement("a");
   anchor.href = access.url;
   anchor.download = access.download_name || `ai-voice-${jobId.slice(0, 8)}.wav`;
@@ -431,13 +492,13 @@ async function pollJob(jobId) {
       : elements.resultMessage.textContent;
     elements.progress.style.width = `${job.progress || 0}%`;
     if (job.status === "completed") {
-      const outputCount = job.outputs?.length || 1;
-      elements.resultTitle.textContent = outputCount > 1 ? "All voiceovers ready" : "Voiceover ready";
+      const outputCount = job.outputs?.length || job.takes?.length || 1;
+      elements.resultTitle.textContent = outputCount > 1 ? "All versions ready" : "Voiceover ready";
       elements.resultMessage.textContent = outputCount > 1
-        ? `${outputCount} translated, watermarked voiceovers are ready to play or download.`
+        ? `${outputCount} watermarked voiceovers are ready to compare or download.`
         : "Generated securely and watermarked for provenance.";
       elements.resultTime.textContent = outputCount > 1
-        ? `${outputCount} languages · ${job.credits.toLocaleString()} credits`
+        ? `${outputCount} outputs · ${job.credits.toLocaleString()} credits`
         : `${job.characters.toLocaleString()} characters`;
       elements.submit.disabled = false;
       await prepareAudio(job);
@@ -482,6 +543,8 @@ async function submitGeneration(event) {
   body.append("exaggeration", $("#exaggeration").value);
   body.append("cfg_weight", $("#cfg-weight").value);
   body.append("temperature", $("#temperature").value);
+  body.append("speed", $("#speed").value);
+  body.append("variations", translating ? "1" : $("#variations").value);
   body.append("consent", cloning ? "true" : "false");
   if (translating) {
     body.append("source_language", elements.sourceLanguage.value);
@@ -530,16 +593,20 @@ async function loadHistory() {
   container.innerHTML = jobs.map((job) => {
     const outputs = job.outputs?.length
       ? job.outputs
+      : job.takes?.length
+      ? job.takes
       : [{ language: job.language, language_label: state.config.languages[job.language] }];
     const languageSummary = job.outputs?.length
       ? `${job.outputs.length} languages`
+      : job.takes?.length > 1
+      ? `${job.takes.length} takes`
       : (job.language || "").toUpperCase();
     const outputActions = job.audio_url ? outputs.map((output) => `
       <div class="history-output">
-        <b>${escapeHtml(output.language_label || languageName(output.language))}</b>
-        <button type="button" class="history-play" data-job-id="${job.id}" data-language="${output.language}">▶ Play</button>
-        <button type="button" class="history-download" data-job-id="${job.id}" data-language="${output.language}">Download ↓</button>
-        <audio class="history-audio" data-language="${output.language}" preload="none"></audio>
+        <b>${escapeHtml(output.language_label || output.label || languageName(output.language))}</b>
+        <button type="button" class="history-play" data-job-id="${job.id}" data-language="${output.language || ""}" data-take="${output.take || ""}">▶ Play</button>
+        <button type="button" class="history-download" data-job-id="${job.id}" data-language="${output.language || ""}" data-take="${output.take || ""}">Download ↓</button>
+        <audio class="history-audio" data-language="${output.language || ""}" data-take="${output.take || ""}" preload="none"></audio>
       </div>`).join("") : "";
     return `
       <article class="history-item">
@@ -588,7 +655,7 @@ function bindEvents() {
     try {
       if (button.classList.contains("history-download")) {
         button.disabled = true;
-        await startDownload(button.dataset.jobId, button.dataset.language || null);
+        await startDownload(button.dataset.jobId, button.dataset.language || null, button.dataset.take || null);
         button.disabled = false;
         return;
       }
@@ -598,6 +665,7 @@ function bindEvents() {
           button.dataset.jobId,
           false,
           button.dataset.language || null,
+          button.dataset.take || null,
         );
         audio.src = access.url;
         audio.load();
@@ -641,6 +709,28 @@ function bindEvents() {
   });
   elements.model.addEventListener("change", renderLanguages);
   elements.voice.addEventListener("change", renderVoiceMode);
+  elements.voiceSearch.addEventListener("input", filterVoices);
+  elements.voiceAccent.addEventListener("change", filterVoices);
+  elements.voiceGender.addEventListener("change", filterVoices);
+  $("#variations").addEventListener("change", updateScriptMeta);
+  $$(".delivery-preset").forEach((button) => button.addEventListener("click", () => {
+    const presets = {
+      natural: { exaggeration: .5, cfg: .5, temperature: .8, speed: 1 },
+      warm: { exaggeration: .6, cfg: .45, temperature: .75, speed: .9 },
+      energetic: { exaggeration: .78, cfg: .35, temperature: 1, speed: 1.1 },
+      dramatic: { exaggeration: .9, cfg: .3, temperature: .9, speed: .9 },
+      calm: { exaggeration: .3, cfg: .65, temperature: .65, speed: .9 },
+    };
+    const preset = presets[button.dataset.preset];
+    $("#exaggeration").value = preset.exaggeration;
+    $("#cfg-weight").value = preset.cfg;
+    $("#temperature").value = preset.temperature;
+    $("#speed").value = String(preset.speed);
+    $("#exaggeration-value").value = `${Math.round(preset.exaggeration * 100)}%`;
+    $("#cfg-value").value = `${Math.round(preset.cfg * 100)}%`;
+    $("#temperature-value").value = preset.temperature.toFixed(1);
+    $$(".delivery-preset").forEach((item) => item.classList.toggle("active", item === button));
+  }));
   elements.form.addEventListener("submit", submitGeneration);
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
   $(".mobile-menu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
@@ -661,14 +751,23 @@ function bindEvents() {
     if (!state.currentJob) return;
     elements.audio.pause();
     elements.playerTime.textContent = "00:00";
-    await prepareAudio(state.currentJob, elements.outputLanguage.value);
+    const mode = elements.outputLanguage.dataset.mode;
+    await prepareAudio(
+      state.currentJob,
+      mode === "language" ? elements.outputLanguage.value : null,
+      mode === "take" ? Number(elements.outputLanguage.value) : null,
+    );
   });
   elements.download.addEventListener("click", async (event) => {
     event.preventDefault();
     const jobId = elements.download.dataset.jobId;
     if (!jobId) return;
     try {
-      await startDownload(jobId, elements.download.dataset.language || null);
+      await startDownload(
+        jobId,
+        elements.download.dataset.language || null,
+        elements.download.dataset.take || null,
+      );
     } catch (error) {
       toast(error.message, true);
     }

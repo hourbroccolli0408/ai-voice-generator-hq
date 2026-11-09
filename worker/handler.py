@@ -79,6 +79,7 @@ def handler(event: dict) -> dict:
             cfg_weight=float(payload.get("cfg_weight", 0.5)),
             temperature=float(payload.get("temperature", 0.8)),
             voice=voice,
+            speed=float(payload.get("speed", 1.0)),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "voiceover.wav"

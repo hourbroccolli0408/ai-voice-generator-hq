@@ -84,6 +84,64 @@ def test_ready_voice_does_not_require_reference_or_consent(monkeypatch, tmp_path
                 break
             time.sleep(0.01)
         assert job["status"] == "completed"
+        assert job["takes"][0]["label"] == "Take 1"
+
+
+def test_two_takes_cost_double_and_each_is_downloadable(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    script = "Compare two candidate reads."
+    with TestClient(module.app) as client:
+        starting_credits = client.get("/api/account").json()["credits"]
+        response = client.post(
+            "/api/generate",
+            data={
+                "text": script,
+                "voice": "alloy",
+                "model": "multilingual-v3",
+                "language": "en",
+                "speed": "1.1",
+                "variations": "2",
+            },
+        )
+        assert response.status_code == 202
+        job_id = response.json()["id"]
+        for _ in range(100):
+            job = client.get(f"/api/jobs/{job_id}").json()
+            if job["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.01)
+        assert job["status"] == "completed"
+        assert [take["take"] for take in job["takes"]] == [1, 2]
+        assert client.get(f"/api/jobs/{job_id}/audio-url?take=2&download=true").status_code == 200
+        ending_credits = client.get("/api/account").json()["credits"]
+        assert ending_credits == starting_credits - (len(script) * 2)
+
+
+def test_generation_rejects_invalid_pacing_and_take_count(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        too_fast = client.post(
+            "/api/generate",
+            data={"text": "Test", "voice": "heart", "speed": "1.5"},
+        )
+        too_many = client.post(
+            "/api/generate",
+            data={"text": "Test", "voice": "heart", "variations": "3"},
+        )
+    assert too_fast.status_code == 400
+    assert too_many.status_code == 400
 
 
 def test_mock_generation_completes(monkeypatch, tmp_path):
