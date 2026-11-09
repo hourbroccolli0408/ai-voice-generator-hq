@@ -652,4 +652,13 @@ async def generate_multilingual(
     return public_job(job)
 
 
+@app.get("/pricing", include_in_schema=False)
+@app.get("/studio", include_in_schema=False)
+@app.get("/privacy", include_in_schema=False)
+@app.get("/terms", include_in_schema=False)
+def public_page() -> FileResponse:
+    """Serve the single-page public site at clean, shareable URLs."""
+    return FileResponse(static_dir / "index.html", media_type="text/html")
+
+
 app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")

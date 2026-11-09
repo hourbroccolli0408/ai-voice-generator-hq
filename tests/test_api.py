@@ -35,6 +35,22 @@ def test_health_and_config(monkeypatch, tmp_path):
         assert config.json()["limits"]["max_translation_targets"] == 5
 
 
+def test_public_marketing_routes(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        for route in ("/", "/pricing", "/studio", "/privacy", "/terms"):
+            response = client.get(route)
+            assert response.status_code == 200
+            assert "AI Voice HQ" in response.text
+        assert "FOUNDER PRICING" in client.get("/pricing").text
+
+
 def test_generation_requires_consent(monkeypatch, tmp_path):
     monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
     monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))

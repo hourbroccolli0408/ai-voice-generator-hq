@@ -15,6 +15,35 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+function renderRoute() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const isStudio = path === "/studio";
+  const route = path === "/pricing" ? "pricing"
+    : path === "/privacy" ? "privacy"
+    : path === "/terms" ? "terms"
+    : "home";
+  $("#marketing-site").classList.toggle("hidden", isStudio);
+  $("#app-shell").classList.toggle("hidden", !isStudio);
+  $$(".marketing-page").forEach((page) => {
+    page.classList.toggle("hidden", isStudio || page.dataset.route !== route);
+  });
+  const requiresAuth = state.config?.auth?.mode === "supabase";
+  $("#auth-overlay").classList.toggle("hidden", !isStudio || !requiresAuth || Boolean(state.session));
+  const titles = {
+    home: "AI Voice HQ — Create voices people remember",
+    pricing: "Pricing — AI Voice HQ",
+    privacy: "Privacy — AI Voice HQ",
+    terms: "Terms — AI Voice HQ",
+  };
+  document.title = isStudio ? "Voiceover Studio — AI Voice HQ" : titles[route];
+  const canonicalPath = isStudio ? "/studio" : route === "home" ? "/" : `/${route}`;
+  const canonicalUrl = `https://aivoicegeneratorhq.com${canonicalPath}`;
+  document.querySelector('link[rel="canonical"]').href = canonicalUrl;
+  document.querySelector('meta[property="og:url"]').content = canonicalUrl;
+  document.querySelector('meta[property="og:title"]').content = document.title;
+  if (!isStudio) window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 const elements = {
   form: $("#generation-form"),
   input: $("#reference-input"),
@@ -74,7 +103,10 @@ async function apiFetch(url, options = {}) {
 }
 
 async function initAuth() {
-  if (state.config.auth.mode !== "supabase") return;
+  if (state.config.auth.mode !== "supabase") {
+    renderRoute();
+    return;
+  }
   if (!window.supabase || !state.config.auth.supabase_url || !state.config.auth.supabase_anon_key) {
     throw new Error("Authentication is not configured correctly");
   }
@@ -84,13 +116,16 @@ async function initAuth() {
   );
   const { data } = await state.supabase.auth.getSession();
   state.session = data.session;
-  $("#auth-overlay").classList.toggle("hidden", Boolean(state.session));
   $("#signout-button").classList.toggle("hidden", !state.session);
+  renderRoute();
   state.supabase.auth.onAuthStateChange((_event, session) => {
     state.session = session;
-    $("#auth-overlay").classList.toggle("hidden", Boolean(session));
     $("#signout-button").classList.toggle("hidden", !session);
-    if (session) loadAccount();
+    renderRoute();
+    if (session) {
+      loadAccount();
+      loadHistory();
+    }
   });
 }
 
@@ -115,8 +150,8 @@ async function submitAuth(createAccount = false) {
     return;
   }
   state.session = data.session;
-  $("#auth-overlay").classList.add("hidden");
   $("#signout-button").classList.remove("hidden");
+  renderRoute();
   await loadAccount();
   await loadHistory();
 }
@@ -646,8 +681,8 @@ function bindEvents() {
   $("#signout-button").addEventListener("click", async () => {
     await state.supabase?.auth.signOut();
     state.session = null;
-    $("#auth-overlay").classList.remove("hidden");
     $("#signout-button").classList.add("hidden");
+    renderRoute();
   });
   $("#history-list").addEventListener("click", async (event) => {
     const button = event.target.closest(".history-play, .history-download");
@@ -776,6 +811,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  renderRoute();
   updateScriptMeta();
   try {
     await loadConfig();
