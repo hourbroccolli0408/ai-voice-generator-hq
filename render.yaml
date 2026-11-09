@@ -32,3 +32,23 @@ services:
         sync: false
       - key: VOICEFORGE_R2_BUCKET
         sync: false
+      - key: VOICEFORGE_PADDLE_ENVIRONMENT
+        value: sandbox
+      - key: VOICEFORGE_PADDLE_CLIENT_TOKEN
+        sync: false
+      - key: VOICEFORGE_PADDLE_API_KEY
+        sync: false
+      - key: VOICEFORGE_PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: VOICEFORGE_PADDLE_CREATOR_MONTHLY_PRICE_ID
+        sync: false
+      - key: VOICEFORGE_PADDLE_CREATOR_ANNUAL_PRICE_ID
+        sync: false
+      - key: VOICEFORGE_PADDLE_PRO_MONTHLY_PRICE_ID
+        sync: false
+      - key: VOICEFORGE_PADDLE_PRO_ANNUAL_PRICE_ID
+        sync: false
+      - key: VOICEFORGE_PADDLE_STUDIO_MONTHLY_PRICE_ID
+        sync: false
+      - key: VOICEFORGE_PADDLE_STUDIO_ANNUAL_PRICE_ID
+        sync: false

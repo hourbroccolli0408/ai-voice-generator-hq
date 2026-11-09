@@ -74,6 +74,32 @@ email, and run a short generation before configuring the domain.
 - Payment webhooks should add positive ledger entries only after the payment provider
   reports a captured payment. Never credit from a browser success page.
 
+## Paddle sandbox billing
+
+Billing is integrated in sandbox mode first. In Paddle Sandbox, create recurring products
+and prices for Creator ($6 monthly or $48 yearly), Pro ($12 monthly or $120 yearly), and
+Studio ($39 monthly or $390 yearly). Put each `pri_...` ID in the matching Render variable
+declared in `render.yaml`.
+
+Create a Paddle client-side token and an API key with
+`customer_portal_session.write`. Add both to Render. Then create a notification destination:
+
+`https://aivoicegeneratorhq.com/api/billing/webhook`
+
+Subscribe it to `transaction.completed`, `subscription.created`,
+`subscription.updated`, `subscription.canceled`, `subscription.paused`,
+`subscription.resumed`, and `subscription.past_due`. Copy that destination's secret into
+`VOICEFORGE_PADDLE_WEBHOOK_SECRET`.
+
+The webhook signature is checked against the unmodified request body. Event IDs and Paddle
+transaction IDs are stored uniquely, so retries cannot issue credits twice. Monthly payments
+issue one monthly allowance; annual payments issue the full annual allowance. Browser checkout
+completion never grants credits.
+
+Use Paddle's webhook simulator and test cards before changing
+`VOICEFORGE_PADDLE_ENVIRONMENT` to `live`. The live account needs its own client token, API key,
+webhook secret, products, prices, and approved default payment link.
+
 ## Release gate
 
 Before accepting public payments, add payment webhooks, abuse/rate limiting, terms and

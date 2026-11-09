@@ -159,13 +159,17 @@
           <p class="launch-pill"><span></span> Transparent character pricing</p>
           <h1>Pay for the words.<br /><em>Keep the value.</em></h1>
           <p>One character equals one credit. No voice multipliers, no surprise export fees and no charge for failed generations.</p>
-          <div class="pricing-notice"><strong>Founder beta</strong><span>Free accounts work today. The paid prices below are planned founder rates, not active subscriptions. Eligibility and any price-lock period will be published before anyone is charged.</span></div>
+          <div class="pricing-notice"><strong>Protected launch</strong><span id="billing-status">Paid checkout is being tested securely. No real charge is possible until live billing is deliberately enabled.</span></div>
+          <div class="billing-cycle" role="group" aria-label="Billing cycle">
+            <button type="button" data-billing-cycle="monthly">Monthly</button>
+            <button type="button" class="active" data-billing-cycle="annual">Annual <span>Save up to 20%</span></button>
+          </div>
         </section>
         <section class="price-grid" aria-label="Pricing plans">
           <article><p class="plan-name">FREE</p><h2>$0</h2><span class="price-period">one-time beta allowance</span><p>Try the full studio and create your first finished voiceovers.</p><a href="/studio">Start free <span>→</span></a><ul><li>5,000 one-time starter credits</li><li>No monthly reset</li><li>No expiry during founder beta</li><li>29 ready voices and cloning</li><li>Translation, history and WAV</li></ul></article>
-          <article><p class="plan-name">CREATOR</p><h2>$4</h2><span class="price-period">planned monthly</span><p>For regular short-form creators, explainers and social content.</p><a href="/studio">Join free beta <span>→</span></a><ul><li>100,000 monthly credits</li><li>About 130 minutes</li><li>Full studio feature set</li><li>29 voices, cloning and translation</li><li>Final billing terms before launch</li></ul></article>
-          <article class="featured"><span class="popular">BEST VALUE</span><p class="plan-name">PRO</p><h2>$12</h2><span class="price-period">planned monthly</span><p>For podcasts, courses and teams publishing every week.</p><a href="/studio">Join free beta <span>→</span></a><ul><li>400,000 monthly credits</li><li>About 530 minutes</li><li>Four times Creator's allowance</li><li>Full studio feature set</li><li>Final billing terms before launch</li></ul></article>
-          <article><p class="plan-name">STUDIO</p><h2>$39</h2><span class="price-period">planned monthly</span><p>For production houses with recurring, high-volume voice work.</p><a href="mailto:hello@aivoicegeneratorhq.com">Talk to us <span>→</span></a><ul><li>1.5M monthly credits</li><li>About 2,000 minutes</li><li>Everything in Pro</li><li>Early access to new tools</li><li>Direct founder support</li></ul></article>
+          <article data-paid-plan="creator"><p class="plan-name">CREATOR</p><h2 data-plan-price>$4</h2><span class="price-period" data-plan-period>/mo · $48 yearly</span><p>For regular short-form creators, explainers and social content.</p><button type="button" class="plan-checkout" data-plan-base="creator"><span>Choose Creator</span><b>→</b></button><ul><li data-plan-credits>1.2M credits issued annually</li><li>About 1,600 minutes</li><li>Full studio feature set</li><li>29 voices, cloning and translation</li><li>Secure self-service billing</li></ul></article>
+          <article class="featured" data-paid-plan="pro"><span class="popular">BEST VALUE</span><p class="plan-name">PRO</p><h2 data-plan-price>$10</h2><span class="price-period" data-plan-period>/mo · $120 yearly</span><p>For podcasts, courses and teams publishing every week.</p><button type="button" class="plan-checkout" data-plan-base="pro"><span>Choose Pro</span><b>→</b></button><ul><li data-plan-credits>4.8M credits issued annually</li><li>About 6,400 minutes</li><li>Four times Creator's allowance</li><li>Full studio feature set</li><li>Secure self-service billing</li></ul></article>
+          <article data-paid-plan="studio"><p class="plan-name">STUDIO</p><h2 data-plan-price>$32.50</h2><span class="price-period" data-plan-period>/mo · $390 yearly</span><p>For production houses with recurring, high-volume voice work.</p><button type="button" class="plan-checkout" data-plan-base="studio"><span>Choose Studio</span><b>→</b></button><ul><li data-plan-credits>18M credits issued annually</li><li>About 24,000 minutes</li><li>Everything in Pro</li><li>Early access to new tools</li><li>Direct founder support</li></ul></article>
         </section>
         <section class="credit-explainer">
           <div><p class="kicker">SIMPLE BY DESIGN</p><h2>Credits you can explain in one sentence.</h2></div>
@@ -196,7 +200,7 @@
             <details><summary>Do failed jobs use credits?<span>＋</span></summary><p>No. Credits are reserved when a job starts so two jobs cannot spend the same balance. If generation fails, the reserved amount is returned automatically. Successful jobs use the displayed estimate, including additional takes or language outputs.</p></details>
             <details><summary>How long can a script be?<span>＋</span></summary><p>The current editor accepts up to 5,000 characters per generation. For longer projects, divide the script at natural section or paragraph breaks. This also makes it easier to compare takes, correct pronunciation and regenerate only the part that needs revision.</p></details>
             <details><summary>Can I publish or use the generated audio commercially?<span>＋</span></summary><p>You may use generated audio in projects you have the right to publish. You remain responsible for the script, trademarks, reference recordings, speaker permissions and any other source material you provide. Do not use the service to impersonate, mislead, defraud or violate another person’s rights.</p></details>
-            <details><summary>When will paid billing open, and what are the founder terms?<span>＋</span></summary><p>Paid billing will open only after real generation costs, reliability, rate limiting and payment webhooks are verified with beta usage. The displayed prices are planned founder rates, not active subscriptions. Before anyone is charged, AI Voice HQ will publish who qualifies, how long any price lock lasts, whether an uninterrupted subscription is required, credit rollover and top-up rules, taxes, renewal timing and cancellation terms.</p></details>
+            <details><summary>How are paid subscriptions, renewals and cancellations handled?<span>＋</span></summary><p>Paid billing uses Paddle as the merchant of record. Paddle securely processes payment details, calculates applicable taxes, provides invoices and manages renewals. Monthly plans add the displayed allowance after each successful monthly payment. Annual plans are paid once and issue the full annual allowance immediately. Failed or incomplete payments never add credits. You can open the hosted billing portal from the studio to update payment details, view invoices or cancel; cancellation stops the next renewal while existing access continues through the paid period.</p></details>
             <details><summary>Is there a plan for agencies or high-volume teams?<span>＋</span></summary><p>Yes. The Studio tier is designed for recurring production work, and custom arrangements can cover larger volumes, deployment requirements and direct support. Email hello@aivoicegeneratorhq.com with expected monthly usage, languages, team size and workflow requirements.</p></details>
           </div>
         </section>
@@ -205,7 +209,7 @@
 
       <main class="marketing-page legal-page hidden" data-route="privacy">
         <p class="kicker">LEGAL</p><h1>Privacy policy</h1><p class="legal-updated">Last updated November 9, 2026</p>
-        <section><h2>What we collect</h2><p>We collect account details, generation settings, scripts, job records and technical logs needed to operate AI Voice HQ. Voice reference files are processed only for the requested generation.</p><h2>How we use information</h2><p>We use this information to provide the service, secure accounts, prevent abuse, diagnose failures and improve product reliability. We do not sell personal information.</p><h2>Voice reference files</h2><p>Reference audio used for voice cloning is deleted after generation. Finished audio and job history remain available to the signed-in account until removed under our retention process.</p><h2>Service providers</h2><p>We use infrastructure providers for authentication, databases, GPU processing and file storage. They process data only to provide those services.</p><h2>Your choices</h2><p>You may request account or stored-data deletion by emailing hello@aivoicegeneratorhq.com.</p></section>
+        <section><h2>What we collect</h2><p>We collect account details, generation settings, scripts, job records and technical logs needed to operate AI Voice HQ. Voice reference files are processed only for the requested generation. For paid accounts, we store the Paddle customer, subscription and transaction identifiers needed to provide credits and account support.</p><h2>Payments</h2><p>Paddle is our merchant of record and processes card details, billing addresses, taxes, invoices, renewals and refunds. AI Voice HQ does not receive or store complete card numbers or card security codes.</p><h2>How we use information</h2><p>We use this information to provide the service, secure accounts, prevent abuse, diagnose failures and improve product reliability. We do not sell personal information.</p><h2>Voice reference files</h2><p>Reference audio used for voice cloning is deleted after generation. Finished audio and job history remain available to the signed-in account until removed under our retention process.</p><h2>Service providers</h2><p>We use infrastructure providers for authentication, databases, GPU processing, file storage and subscription billing. They process data only to provide those services.</p><h2>Your choices</h2><p>You may request account or stored-data deletion by emailing hello@aivoicegeneratorhq.com.</p></section>
       </main>
 
       <main class="marketing-page legal-page hidden" data-route="terms">
@@ -259,6 +263,7 @@
           <div class="eyebrow"><span></span> New generation</div>
           <div class="account-actions">
             <div class="local-badge"><b id="credit-balance">—</b> CREDITS</div>
+            <button type="button" class="billing-button hidden" id="billing-button">Manage billing</button>
             <button type="button" class="signout-button hidden" id="signout-button">Sign out</button>
           </div>
         </header>
@@ -522,6 +527,7 @@
     </div>
     <div class="toast" id="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

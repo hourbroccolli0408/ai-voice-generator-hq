@@ -10,6 +10,8 @@ const state = {
   supabase: null,
   session: null,
   audioObjectUrl: null,
+  billingCycle: "annual",
+  paddleReady: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -112,6 +114,103 @@ function bindMarketingPresets() {
   $$("[data-marketing-preset]").forEach((button) => {
     button.addEventListener("click", () => renderMarketingPreset(button.dataset.marketingPreset));
   });
+}
+
+const BILLING_DISPLAY = {
+  creator: {
+    monthly: { price: "$6", period: "/month", credits: "100,000 credits every month", minutes: "About 130 minutes" },
+    annual: { price: "$4", period: "/mo · $48 yearly", credits: "1.2M credits issued annually", minutes: "About 1,600 minutes" },
+  },
+  pro: {
+    monthly: { price: "$12", period: "/month", credits: "400,000 credits every month", minutes: "About 530 minutes" },
+    annual: { price: "$10", period: "/mo · $120 yearly", credits: "4.8M credits issued annually", minutes: "About 6,400 minutes" },
+  },
+  studio: {
+    monthly: { price: "$39", period: "/month", credits: "1.5M credits every month", minutes: "About 2,000 minutes" },
+    annual: { price: "$32.50", period: "/mo · $390 yearly", credits: "18M credits issued annually", minutes: "About 24,000 minutes" },
+  },
+};
+
+function renderBillingCycle(cycle) {
+  state.billingCycle = cycle;
+  $$('[data-billing-cycle]').forEach((button) => {
+    const active = button.dataset.billingCycle === cycle;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  $$('[data-paid-plan]').forEach((card) => {
+    const display = BILLING_DISPLAY[card.dataset.paidPlan]?.[cycle];
+    if (!display) return;
+    card.querySelector('[data-plan-price]').textContent = display.price;
+    card.querySelector('[data-plan-period]').textContent = display.period;
+    card.querySelector('[data-plan-credits]').textContent = display.credits;
+    const minutes = card.querySelector('[data-plan-credits] + li');
+    if (minutes) minutes.textContent = display.minutes;
+  });
+}
+
+function initializeBilling() {
+  const billing = state.config?.billing;
+  const status = $("#billing-status");
+  if (!billing?.enabled) {
+    if (status) status.textContent = "Secure paid checkout is installed in test mode and will open after the Paddle account and plan IDs are verified.";
+    return;
+  }
+  if (!window.Paddle || !billing.client_token) {
+    if (status) status.textContent = "Secure checkout is temporarily unavailable. Free beta accounts still work normally.";
+    return;
+  }
+  if (billing.environment === "sandbox") window.Paddle.Environment.set("sandbox");
+  window.Paddle.Initialize({
+    token: billing.client_token,
+    eventCallback: (event) => {
+      if (event.name === "checkout.completed") {
+        sessionStorage.removeItem("pendingBillingPlan");
+        toast("Test payment completed. Your credits will appear after secure verification.");
+        setTimeout(loadAccount, 1800);
+      }
+    },
+  });
+  state.paddleReady = true;
+  if (status) {
+    status.textContent = billing.environment === "sandbox"
+      ? "Paddle sandbox is connected. Checkout uses test payments only—no real money can be charged."
+      : "Secure checkout, tax calculation, invoices and subscription management are provided by Paddle.";
+  }
+}
+
+function openCheckout(basePlan) {
+  const planCode = `${basePlan}_${state.billingCycle}`;
+  if (!state.session) {
+    sessionStorage.setItem("pendingBillingPlan", planCode);
+    window.location.assign("/studio");
+    return;
+  }
+  const billing = state.config?.billing;
+  const plan = billing?.plans?.[planCode];
+  if (!billing?.enabled || !state.paddleReady || !plan?.price_id) {
+    toast("Paid checkout is still in secure test setup. Your free beta access remains available.", true);
+    return;
+  }
+  window.Paddle.Checkout.open({
+    items: [{ priceId: plan.price_id, quantity: 1 }],
+    customData: { user_id: state.session.user.id, plan_code: planCode },
+    customer: { email: state.session.user.email },
+    settings: { displayMode: "overlay", theme: "dark", locale: "en" },
+  });
+}
+
+function maybeOpenPendingCheckout() {
+  if (!state.session || !state.config?.billing) return;
+  const pending = sessionStorage.getItem("pendingBillingPlan");
+  if (!pending) return;
+  const [basePlan, cycle] = pending.split("_");
+  if (!BILLING_DISPLAY[basePlan]?.[cycle]) {
+    sessionStorage.removeItem("pendingBillingPlan");
+    return;
+  }
+  renderBillingCycle(cycle);
+  setTimeout(() => openCheckout(basePlan), 250);
 }
 
 function applyStudioPreset(name) {
@@ -246,6 +345,7 @@ async function initAuth() {
     if (session) {
       loadAccount();
       loadHistory();
+      maybeOpenPendingCheckout();
     }
   });
 }
@@ -277,6 +377,7 @@ async function submitAuth(createAccount = false) {
   renderRoute();
   await loadAccount();
   await loadHistory();
+  maybeOpenPendingCheckout();
 }
 
 async function loadAccount() {
@@ -284,6 +385,7 @@ async function loadAccount() {
   if (!response.ok) return;
   const account = await response.json();
   $("#credit-balance").textContent = account.credits.toLocaleString();
+  $("#billing-button").classList.toggle("hidden", !account.subscription);
 }
 
 function formatBytes(bytes) {
@@ -467,6 +569,7 @@ async function loadConfig() {
   state.config = await configResponse.json();
   const health = await healthResponse.json();
   await initAuth();
+  initializeBilling();
   const voices = Object.values(state.config.voices);
   elements.voiceAccent.innerHTML += [...new Set(voices.map((voice) => voice.accent))]
     .sort().map((value) => `<option value="${value}">${value}</option>`).join("");
@@ -498,6 +601,7 @@ async function loadConfig() {
   $("#runtime-label").textContent = health.engine === "mock" ? "Preview engine" : "Secure voice engine";
   $("#runtime-detail").textContent = `${health.worker_mode} · ${health.device}`;
   await loadAccount();
+  maybeOpenPendingCheckout();
 }
 
 async function toggleRecording() {
@@ -798,6 +902,13 @@ function switchView(view) {
 function bindEvents() {
   bindPublicSamples();
   bindMarketingPresets();
+  renderBillingCycle("annual");
+  $$('[data-billing-cycle]').forEach((button) => {
+    button.addEventListener("click", () => renderBillingCycle(button.dataset.billingCycle));
+  });
+  $$('.plan-checkout').forEach((button) => {
+    button.addEventListener("click", () => openCheckout(button.dataset.planBase));
+  });
   $("#auth-form").addEventListener("submit", (event) => {
     event.preventDefault();
     submitAuth(false);
@@ -808,6 +919,19 @@ function bindEvents() {
     state.session = null;
     $("#signout-button").classList.add("hidden");
     renderRoute();
+  });
+  $("#billing-button").addEventListener("click", async () => {
+    const button = $("#billing-button");
+    button.disabled = true;
+    try {
+      const response = await apiFetch("/api/billing/portal", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Billing portal is unavailable");
+      window.location.assign(result.url);
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message, true);
+    }
   });
   $("#history-list").addEventListener("click", async (event) => {
     const button = event.target.closest(".history-play, .history-download");

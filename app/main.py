@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+import httpx
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from langdetect import DetectorFactory, LangDetectException, detect
 
 from .auth import get_current_user
+from .billing import InvalidWebhookSignature, first_price_id, parse_event, verify_paddle_signature
 from .config import settings
 from .dispatcher import create_generation_engine
 from .engine import (
@@ -61,6 +63,15 @@ app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def configured_plan_by_price(price_id: str | None) -> tuple[str | None, dict | None]:
+    if not price_id:
+        return None, None
+    for code, plan in settings.paddle_plans.items():
+        if plan["price_id"] == price_id:
+            return code, plan
+    return None, None
 
 
 def public_job(job: dict) -> dict:
@@ -324,12 +335,126 @@ def config() -> dict:
                 settings.supabase_anon_key if settings.auth_mode == "supabase" else None
             ),
         },
+        "billing": {
+            "provider": "paddle",
+            "enabled": settings.paddle_enabled,
+            "environment": settings.paddle_environment,
+            "client_token": settings.paddle_client_token if settings.paddle_enabled else None,
+            "plans": {
+                code: {
+                    "name": plan["name"],
+                    "interval": plan["interval"],
+                    "credits": plan["credits"],
+                    "price_id": plan["price_id"],
+                }
+                for code, plan in settings.paddle_plans.items()
+            },
+        },
     }
 
 
 @app.get("/api/account")
 def account(user_id: str = Depends(get_current_user)) -> dict:
-    return {"id": user_id, "credits": repository.balance(user_id)}
+    subscription = repository.get_subscription(user_id)
+    if subscription:
+        plan = settings.paddle_plans.get(subscription.get("plan_code") or "")
+        subscription["plan_name"] = plan["name"] if plan else subscription.get("plan_code")
+        subscription["interval"] = plan["interval"] if plan else None
+    return {
+        "id": user_id,
+        "credits": repository.balance(user_id),
+        "subscription": subscription,
+    }
+
+
+@app.post("/api/billing/webhook", include_in_schema=False)
+async def paddle_webhook(
+    request: Request,
+    paddle_signature: str | None = Header(default=None, alias="Paddle-Signature"),
+) -> dict:
+    if not settings.paddle_webhook_secret:
+        raise HTTPException(status_code=503, detail="Billing webhooks are not configured")
+
+    raw_body = await request.body()
+    try:
+        verify_paddle_signature(raw_body, paddle_signature, settings.paddle_webhook_secret)
+        event = parse_event(raw_body)
+    except InvalidWebhookSignature as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    data = event.get("data") or {}
+    event_type = str(event["event_type"])
+    custom_data = data.get("custom_data") or {}
+    user_id = str(custom_data.get("user_id")) if custom_data.get("user_id") else None
+    price_id = first_price_id(data)
+    plan_code, plan = configured_plan_by_price(price_id)
+    transaction_id = str(data.get("id")) if event_type == "transaction.completed" else None
+    subscription_id = data.get("subscription_id")
+    if event_type.startswith("subscription."):
+        subscription_id = data.get("id") or subscription_id
+    customer_id = data.get("customer_id")
+
+    credits = 0
+    if event_type == "transaction.completed":
+        if not user_id:
+            raise HTTPException(status_code=422, detail="Paid transaction has no account ID")
+        if not plan or not plan_code:
+            raise HTTPException(status_code=422, detail="Paid transaction uses an unknown price")
+        credits = int(plan["credits"])
+
+    scheduled_change = data.get("scheduled_change") or {}
+    cancel_at_period_end = scheduled_change.get("action") == "cancel"
+    applied = repository.apply_paddle_event(
+        event_id=str(event["event_id"]),
+        event_type=event_type,
+        occurred_at=event.get("occurred_at"),
+        user_id=user_id,
+        transaction_id=transaction_id,
+        subscription_id=str(subscription_id) if subscription_id else None,
+        customer_id=str(customer_id) if customer_id else None,
+        price_id=price_id,
+        plan_code=plan_code,
+        status=(
+            "active"
+            if event_type == "transaction.completed"
+            else str(data.get("status") or "active")
+        ),
+        next_billed_at=data.get("next_billed_at"),
+        cancel_at_period_end=cancel_at_period_end,
+        credits=credits,
+    )
+    return {"received": True, "applied": applied}
+
+
+@app.post("/api/billing/portal")
+async def billing_portal(user_id: str = Depends(get_current_user)) -> dict:
+    subscription = repository.get_subscription(user_id)
+    if not subscription or not subscription.get("customer_id"):
+        raise HTTPException(status_code=404, detail="No paid billing account was found")
+    if not settings.paddle_api_key:
+        raise HTTPException(status_code=503, detail="Billing management is not configured")
+
+    customer_id = subscription["customer_id"]
+    payload = {"subscription_ids": [subscription["id"]]}
+    headers = {
+        "Authorization": f"Bearer {settings.paddle_api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{settings.paddle_api_base_url}/customers/{customer_id}/portal-sessions",
+                headers=headers,
+                json=payload,
+            )
+        response.raise_for_status()
+        portal_url = response.json()["data"]["urls"]["general"]["overview"]
+    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+        logger.exception("Could not create Paddle customer portal session")
+        raise HTTPException(status_code=502, detail="Billing portal is temporarily unavailable") from exc
+    return {"url": portal_url}
 
 
 @app.get("/api/jobs")
