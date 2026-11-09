@@ -34,3 +34,18 @@ def test_insufficient_credits_do_not_create_job(tmp_path):
 
     assert repository.balance("user-1") == 25
     assert repository.get_job("job-1", "user-1") is None
+
+
+def test_projects_are_private_and_count_their_jobs(tmp_path):
+    repository = Repository(f"sqlite:///{(tmp_path / 'projects.db').as_posix()}", 100)
+    project = repository.create_project("user-1", "project-1", "Podcast Launch")
+    duplicate = repository.create_project("user-1", "project-2", "podcast launch")
+    job = sample_job()
+    job.update(project_id=project["id"], project_name=project["name"], title="Episode one")
+    repository.create_job_and_reserve("user-1", job, 40)
+
+    projects = repository.list_projects("user-1")
+    assert duplicate["id"] == project["id"]
+    assert projects[0]["name"] == "Podcast Launch"
+    assert projects[0]["job_count"] == 1
+    assert repository.get_project("project-1", "user-2") is None

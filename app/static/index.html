@@ -245,7 +245,25 @@
           <a class="nav-item nav-link" href="/pricing"><span class="nav-icon">◇</span> Pricing</a>
         </nav>
 
+        <section class="sidebar-projects" aria-labelledby="projects-label">
+          <div class="sidebar-section-heading">
+            <span id="projects-label">Projects</span>
+            <button type="button" id="new-project-button" aria-label="Create project">＋</button>
+          </div>
+          <form class="new-project-form hidden" id="new-project-form">
+            <input id="new-project-name" maxlength="80" placeholder="Project name" aria-label="Project name" />
+            <button type="submit">Add</button>
+          </form>
+          <button type="button" class="project-item active" data-project-filter="all"><span>▦</span><b>All voiceovers</b></button>
+          <div class="project-list" id="project-list"></div>
+        </section>
+
         <div class="sidebar-bottom">
+          <button type="button" class="sidebar-profile" id="sidebar-profile-button">
+            <span class="profile-avatar" data-profile-initial>G</span>
+            <span><strong data-profile-name>Your account</strong><small data-profile-plan>Free beta</small></span>
+            <b>•••</b>
+          </button>
           <div class="runtime-card">
             <span class="runtime-dot"></span>
             <div>
@@ -260,11 +278,17 @@
       <main>
         <header class="topbar">
           <button class="mobile-menu" aria-label="Open menu">☰</button>
-          <div class="eyebrow"><span></span> New generation</div>
+          <div class="task-context">
+            <span class="eyebrow"><i></i> New voiceover</span>
+            <input id="task-title" maxlength="80" value="Untitled voiceover" aria-label="Voiceover task name" />
+            <label>in <select id="task-project" aria-label="Project"><option value="">Unfiled</option></select></label>
+          </div>
           <div class="account-actions">
-            <div class="local-badge"><b id="credit-balance">—</b> CREDITS</div>
-            <button type="button" class="billing-button hidden" id="billing-button">Manage billing</button>
-            <button type="button" class="signout-button hidden" id="signout-button">Sign out</button>
+            <button type="button" class="profile-chip" id="top-profile-button" aria-label="Open profile">
+              <span class="profile-avatar" data-profile-initial>G</span>
+              <span><b id="credit-balance">—</b><small>credits</small></span>
+              <i>⌄</i>
+            </button>
           </div>
         </header>
 
@@ -496,8 +520,8 @@
 
         <section class="view" id="history-view">
           <div class="history-header">
-            <div><p class="kicker">YOUR LIBRARY</p><h1>Generation history</h1></div>
-            <p>Private to your account.</p>
+            <div><p class="kicker">YOUR LIBRARY</p><h1 id="history-title">All voiceovers</h1></div>
+            <p id="history-description">Private to your account.</p>
           </div>
           <div class="history-list" id="history-list"></div>
         </section>
@@ -508,6 +532,21 @@
         </footer>
       </main>
     </div>
+
+    <aside class="profile-menu hidden" id="profile-menu" aria-label="Profile menu">
+      <header>
+        <span class="profile-avatar large" data-profile-initial>G</span>
+        <div><strong data-profile-name>Your account</strong><small id="profile-email">Signed-in account</small></div>
+      </header>
+      <div class="profile-plan-card">
+        <span><small>CURRENT PLAN</small><strong data-profile-plan>Free beta</strong></span>
+        <span><small>AVAILABLE</small><strong><b id="profile-credits">—</b> credits</strong></span>
+      </div>
+      <button type="button" class="profile-action primary" id="billing-button"><span>◇</span><b id="billing-action-label">View plans</b><i>→</i></button>
+      <a class="profile-action" href="/privacy"><span>⌾</span><b>Account &amp; data</b><i>→</i></a>
+      <a class="profile-action" href="mailto:hello@aivoicegeneratorhq.com"><span>?</span><b>Help &amp; support</b><i>→</i></a>
+      <button type="button" class="profile-action danger hidden" id="signout-button"><span>↪</span><b>Sign out</b></button>
+    </aside>
 
     <div class="auth-overlay hidden" id="auth-overlay">
       <form class="auth-card" id="auth-form">

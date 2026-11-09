@@ -113,6 +113,36 @@ def test_ready_voice_does_not_require_reference_or_consent(monkeypatch, tmp_path
         assert job["takes"][0]["label"] == "Take 1"
 
 
+def test_project_and_task_name_are_saved_with_generation(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        created = client.post("/api/projects", json={"name": "Launch Campaign"})
+        assert created.status_code == 201
+        project = created.json()
+        response = client.post(
+            "/api/generate",
+            data={
+                "text": "A named project voiceover.",
+                "title": "Opening advertisement",
+                "project_id": project["id"],
+                "voice": "heart",
+            },
+        )
+        assert response.status_code == 202
+        job = response.json()
+        assert job["title"] == "Opening advertisement"
+        assert job["project_id"] == project["id"]
+        assert job["project_name"] == "Launch Campaign"
+        projects = client.get("/api/projects").json()
+        assert projects[0]["job_count"] == 1
+
+
 def test_two_takes_cost_double_and_each_is_downloadable(monkeypatch, tmp_path):
     monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
     monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))

@@ -10,6 +10,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from langdetect import DetectorFactory, LangDetectException, detect
@@ -72,6 +73,28 @@ def configured_plan_by_price(price_id: str | None) -> tuple[str | None, dict | N
         if plan["price_id"] == price_id:
             return code, plan
     return None, None
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+def resolve_project(user_id: str, project_id: str) -> dict | None:
+    project_id = project_id.strip()
+    if not project_id:
+        return None
+    project = repository.get_project(project_id, user_id)
+    if not project:
+        raise HTTPException(status_code=400, detail="That project is unavailable")
+    return project
+
+
+def task_name(value: str, text: str) -> str:
+    cleaned = " ".join(value.split())[:80]
+    if cleaned:
+        return cleaned
+    fallback = " ".join(text.split())[:60]
+    return fallback or "Untitled voiceover"
 
 
 def public_job(job: dict) -> dict:
@@ -462,6 +485,19 @@ def list_jobs(user_id: str = Depends(get_current_user)) -> list[dict]:
     return [public_job(job) for job in repository.list_jobs(user_id)]
 
 
+@app.get("/api/projects")
+def list_projects(user_id: str = Depends(get_current_user)) -> list[dict]:
+    return repository.list_projects(user_id)
+
+
+@app.post("/api/projects", status_code=201)
+def create_project(project: ProjectCreate, user_id: str = Depends(get_current_user)) -> dict:
+    name = " ".join(project.name.split())
+    if not name:
+        raise HTTPException(status_code=400, detail="Add a project name")
+    return repository.create_project(user_id, uuid.uuid4().hex, name)
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str, user_id: str = Depends(get_current_user)) -> dict:
     job = repository.get_job(job_id, user_id)
@@ -538,9 +574,12 @@ async def generate(
     speed: Annotated[float, Form()] = 1.0,
     variations: Annotated[int, Form()] = 1,
     consent: Annotated[bool, Form()] = False,
+    project_id: Annotated[str, Form()] = "",
+    title: Annotated[str, Form()] = "",
     user_id: str = Depends(get_current_user),
 ) -> dict:
     text = text.strip()
+    project = resolve_project(user_id, project_id)
     if voice not in VOICE_OPTIONS:
         raise HTTPException(status_code=400, detail="Unsupported voice")
     voice_option = VOICE_OPTIONS[voice]
@@ -610,6 +649,9 @@ async def generate(
         "language": language,
         "characters": len(text),
         "credits": credits,
+        "title": task_name(title, text),
+        "project_id": project["id"] if project else None,
+        "project_name": project["name"] if project else "Unfiled",
         "variations": variations,
         "speed": speed,
         "text_preview": text[:120] + ("…" if len(text) > 120 else ""),
@@ -656,9 +698,12 @@ async def generate_multilingual(
     temperature: Annotated[float, Form()] = 0.8,
     speed: Annotated[float, Form()] = 1.0,
     consent: Annotated[bool, Form()] = False,
+    project_id: Annotated[str, Form()] = "",
+    title: Annotated[str, Form()] = "",
     user_id: str = Depends(get_current_user),
 ) -> dict:
     text = text.strip()
+    project = resolve_project(user_id, project_id)
     targets = list(dict.fromkeys(code.strip() for code in target_languages.split(",") if code.strip()))
     if not text:
         raise HTTPException(status_code=400, detail="Add a script to translate")
@@ -738,6 +783,9 @@ async def generate_multilingual(
         "language": "multiple",
         "characters": len(text),
         "credits": credits,
+        "title": task_name(title, text),
+        "project_id": project["id"] if project else None,
+        "project_name": project["name"] if project else "Unfiled",
         "text_preview": text[:120] + ("…" if len(text) > 120 else ""),
         "reference_path": str(normalized_path) if normalized_path else None,
         "outputs": [],

@@ -12,6 +12,9 @@ const state = {
   audioObjectUrl: null,
   billingCycle: "annual",
   paddleReady: false,
+  projects: [],
+  historyProjectId: null,
+  account: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -345,6 +348,7 @@ async function initAuth() {
     if (session) {
       loadAccount();
       loadHistory();
+      loadProjects();
       maybeOpenPendingCheckout();
     }
   });
@@ -377,6 +381,7 @@ async function submitAuth(createAccount = false) {
   renderRoute();
   await loadAccount();
   await loadHistory();
+  await loadProjects();
   maybeOpenPendingCheckout();
 }
 
@@ -384,8 +389,59 @@ async function loadAccount() {
   const response = await apiFetch("/api/account");
   if (!response.ok) return;
   const account = await response.json();
+  state.account = account;
   $("#credit-balance").textContent = account.credits.toLocaleString();
-  $("#billing-button").classList.toggle("hidden", !account.subscription);
+  $("#profile-credits").textContent = account.credits.toLocaleString();
+  const email = state.session?.user?.email || "Local preview account";
+  const displayName = email.includes("@") ? email.split("@")[0] : "Your account";
+  const initial = displayName.charAt(0).toUpperCase() || "A";
+  $$('[data-profile-initial]').forEach((element) => { element.textContent = initial; });
+  $$('[data-profile-name]').forEach((element) => { element.textContent = displayName; });
+  $("#profile-email").textContent = email;
+  const planName = account.subscription?.plan_name || "Free beta";
+  $$('[data-profile-plan]').forEach((element) => { element.textContent = planName; });
+  $("#billing-action-label").textContent = account.subscription ? "Manage billing" : "View plans";
+}
+
+async function loadProjects() {
+  const response = await apiFetch("/api/projects");
+  if (!response.ok) return;
+  state.projects = await response.json();
+  const select = $("#task-project");
+  const selected = select.value;
+  select.innerHTML = '<option value="">Unfiled</option>' + state.projects
+    .map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`)
+    .join("");
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+  renderProjectList();
+}
+
+function renderProjectList() {
+  const list = $("#project-list");
+  list.innerHTML = state.projects.map((project) => `
+    <button type="button" class="project-item ${state.historyProjectId === project.id ? "active" : ""}" data-project-id="${project.id}">
+      <span>▱</span><b>${escapeHtml(project.name)}</b><small>${project.job_count}</small>
+    </button>`).join("");
+  $('[data-project-filter="all"]').classList.toggle("active", !state.historyProjectId);
+}
+
+async function createProject(event) {
+  event.preventDefault();
+  const input = $("#new-project-name");
+  const name = input.value.trim();
+  if (!name) return;
+  const response = await apiFetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  const project = await response.json();
+  if (!response.ok) return toast(project.detail || "Could not create that project", true);
+  input.value = "";
+  $("#new-project-form").classList.add("hidden");
+  await loadProjects();
+  $("#task-project").value = project.id;
+  toast(`${project.name} is ready.`);
 }
 
 function formatBytes(bytes) {
@@ -601,6 +657,7 @@ async function loadConfig() {
   $("#runtime-label").textContent = health.engine === "mock" ? "Preview engine" : "Secure voice engine";
   $("#runtime-detail").textContent = `${health.worker_mode} · ${health.device}`;
   await loadAccount();
+  await loadProjects();
   maybeOpenPendingCheckout();
 }
 
@@ -766,6 +823,7 @@ async function pollJob(jobId) {
       await prepareAudio(job);
       await loadHistory();
       await loadAccount();
+      await loadProjects();
       toast("Your voiceover is ready.");
       return;
     }
@@ -808,6 +866,8 @@ async function submitGeneration(event) {
   body.append("speed", $("#speed").value);
   body.append("variations", translating ? "1" : $("#variations").value);
   body.append("consent", cloning ? "true" : "false");
+  body.append("title", $("#task-title").value.trim());
+  body.append("project_id", $("#task-project").value);
   if (translating) {
     body.append("source_language", elements.sourceLanguage.value);
     body.append("target_languages", targets.join(","));
@@ -847,12 +907,20 @@ async function loadHistory() {
   if (!response.ok) return;
   const jobs = await response.json();
   $("#history-count").textContent = jobs.length;
+  const activeProject = state.projects.find((project) => project.id === state.historyProjectId);
+  const visibleJobs = state.historyProjectId
+    ? jobs.filter((job) => job.project_id === state.historyProjectId)
+    : jobs;
+  $("#history-title").textContent = activeProject?.name || "All voiceovers";
+  $("#history-description").textContent = activeProject
+    ? `${visibleJobs.length} voiceover${visibleJobs.length === 1 ? "" : "s"} in this project.`
+    : "Private to your account.";
   const container = $("#history-list");
-  if (!jobs.length) {
-    container.innerHTML = '<div class="empty-state">No voiceovers yet. Your completed generations will appear here.</div>';
+  if (!visibleJobs.length) {
+    container.innerHTML = `<div class="empty-state">${activeProject ? "No voiceovers in this project yet." : "No voiceovers yet. Your completed generations will appear here."}</div>`;
     return;
   }
-  container.innerHTML = jobs.map((job) => {
+  container.innerHTML = visibleJobs.map((job) => {
     const outputs = job.outputs?.length
       ? job.outputs
       : job.takes?.length
@@ -874,8 +942,9 @@ async function loadHistory() {
       <article class="history-item">
         <div class="history-icon">♪</div>
         <div class="history-copy">
-          <strong>${escapeHtml(job.text_preview)}</strong>
-          <span>${new Date(job.created_at).toLocaleString()} · ${escapeHtml(job.voice_label || "Cloned voice")} · ${languageSummary}</span>
+          <strong>${escapeHtml(job.title || job.text_preview)}</strong>
+          <p>${escapeHtml(job.text_preview)}</p>
+          <span>${escapeHtml(job.project_name || "Unfiled")} · ${new Date(job.created_at).toLocaleString()} · ${escapeHtml(job.voice_label || "Cloned voice")} · ${languageSummary}</span>
         </div>
         <div class="history-actions">
           <span class="history-status">${job.status}</span>
@@ -918,9 +987,14 @@ function bindEvents() {
     await state.supabase?.auth.signOut();
     state.session = null;
     $("#signout-button").classList.add("hidden");
+    $("#profile-menu").classList.add("hidden");
     renderRoute();
   });
   $("#billing-button").addEventListener("click", async () => {
+    if (!state.account?.subscription) {
+      window.location.assign("/pricing");
+      return;
+    }
     const button = $("#billing-button");
     button.disabled = true;
     try {
@@ -933,6 +1007,33 @@ function bindEvents() {
       toast(error.message, true);
     }
   });
+  $("#new-project-button").addEventListener("click", () => {
+    const form = $("#new-project-form");
+    form.classList.toggle("hidden");
+    if (!form.classList.contains("hidden")) $("#new-project-name").focus();
+  });
+  $("#new-project-form").addEventListener("submit", createProject);
+  $("#project-list").addEventListener("click", (event) => {
+    const project = event.target.closest("[data-project-id]");
+    if (!project) return;
+    state.historyProjectId = project.dataset.projectId;
+    $("#task-project").value = state.historyProjectId;
+    renderProjectList();
+    switchView("history");
+  });
+  $('[data-project-filter="all"]').addEventListener("click", () => {
+    state.historyProjectId = null;
+    renderProjectList();
+    switchView("history");
+  });
+  [$("#top-profile-button"), $("#sidebar-profile-button")].forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      $("#profile-menu").classList.toggle("hidden");
+    });
+  });
+  $("#profile-menu").addEventListener("click", (event) => event.stopPropagation());
+  document.addEventListener("click", () => $("#profile-menu").classList.add("hidden"));
   $("#history-list").addEventListener("click", async (event) => {
     const button = event.target.closest(".history-play, .history-download");
     if (!button) return;
@@ -1003,7 +1104,13 @@ function bindEvents() {
   const requestedPreset = new URLSearchParams(window.location.search).get("preset");
   if (requestedPreset) applyStudioPreset(requestedPreset);
   elements.form.addEventListener("submit", submitGeneration);
-  $$(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+  $$(".nav-item[data-view]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.view === "history") {
+      state.historyProjectId = null;
+      renderProjectList();
+    }
+    switchView(button.dataset.view);
+  }));
   $(".mobile-menu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
   [["#exaggeration", "#exaggeration-value", (v) => `${Math.round(v * 100)}%`],
    ["#cfg-weight", "#cfg-value", (v) => `${Math.round(v * 100)}%`],

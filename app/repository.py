@@ -41,6 +41,16 @@ class Job(Base):
     payload: Mapped[str] = mapped_column(Text)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class BillingEvent(Base):
     __tablename__ = "billing_events"
 
@@ -204,6 +214,72 @@ class Repository:
                 .limit(limit)
             ).all()
             return [json.loads(row.payload) for row in rows]
+
+    def create_project(self, user_id: str, project_id: str, name: str) -> dict:
+        self._ensure_schema()
+        with Session(self.engine) as session, session.begin():
+            self._ensure_user(session, user_id)
+            existing = session.scalar(
+                select(Project).where(
+                    Project.user_id == user_id,
+                    func.lower(Project.name) == name.lower(),
+                )
+            )
+            if existing:
+                return {
+                    "id": existing.id,
+                    "name": existing.name,
+                    "job_count": 0,
+                    "created_at": existing.created_at.isoformat(),
+                }
+            now = utcnow()
+            session.add(
+                Project(
+                    id=project_id,
+                    user_id=user_id,
+                    name=name,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            return {
+                "id": project_id,
+                "name": name,
+                "job_count": 0,
+                "created_at": now.isoformat(),
+            }
+
+    def get_project(self, project_id: str, user_id: str) -> dict | None:
+        self._ensure_schema()
+        with Session(self.engine) as session:
+            row = session.get(Project, project_id)
+            if not row or row.user_id != user_id:
+                return None
+            return {"id": row.id, "name": row.name, "created_at": row.created_at.isoformat()}
+
+    def list_projects(self, user_id: str) -> list[dict]:
+        self._ensure_schema()
+        with Session(self.engine) as session:
+            projects = session.scalars(
+                select(Project)
+                .where(Project.user_id == user_id)
+                .order_by(Project.updated_at.desc())
+            ).all()
+            job_rows = session.scalars(select(Job).where(Job.user_id == user_id)).all()
+            counts: dict[str, int] = {}
+            for job_row in job_rows:
+                project_id = json.loads(job_row.payload).get("project_id")
+                if project_id:
+                    counts[project_id] = counts.get(project_id, 0) + 1
+            return [
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "job_count": counts.get(row.id, 0),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in projects
+            ]
 
     def refund(self, user_id: str, job_id: str, credits: int) -> None:
         self._ensure_schema()
