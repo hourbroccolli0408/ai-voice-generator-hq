@@ -142,6 +142,7 @@ async function submitAuth(createAccount = false) {
   const password = $("#auth-password").value;
   const message = $("#auth-message");
   message.textContent = "";
+  message.classList.remove("success");
   const action = createAccount
     ? state.supabase.auth.signUp({ email, password })
     : state.supabase.auth.signInWithPassword({ email, password });
@@ -152,6 +153,7 @@ async function submitAuth(createAccount = false) {
   }
   if (createAccount && !data.session) {
     message.textContent = "Check your email to confirm your beta account.";
+    message.classList.add("success");
     return;
   }
   state.session = data.session;

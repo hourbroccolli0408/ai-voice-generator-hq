@@ -501,12 +501,14 @@
         <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
         <p class="kicker">FOUNDER BETA</p>
         <h2>Welcome to AI Voice HQ</h2>
-        <p>Sign in to use your credits and keep generations private.</p>
+        <p>Sign in to use your credits, access private history and create new voiceovers.</p>
         <label>Email<input type="email" id="auth-email" autocomplete="email" required /></label>
         <label>Password<input type="password" id="auth-password" autocomplete="current-password" minlength="8" required /></label>
         <button type="submit" class="generate-button"><span>Sign in</span><b>→</b></button>
-        <button type="button" class="auth-secondary" id="signup-button">Create beta account</button>
-        <small id="auth-message"></small>
+        <div class="auth-divider"><span>New to AI Voice HQ?</span></div>
+        <button type="button" class="auth-secondary" id="signup-button"><span>Create free account</span><b>→</b></button>
+        <p class="auth-benefit">Includes 5,000 starter credits · No card required</p>
+        <small id="auth-message" aria-live="polite"></small>
       </form>
     </div>
     <div class="toast" id="toast" role="status"></div>
