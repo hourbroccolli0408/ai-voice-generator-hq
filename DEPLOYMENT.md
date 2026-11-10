@@ -20,6 +20,11 @@ working on its temporary Render URL.
 The API creates the `users`, `credit_ledger`, and `jobs` tables on first startup. Every
 new authenticated account receives `VOICEFORGE_STARTER_CREDITS` exactly once.
 
+The API also creates the private `saved_voices` table. Each record is bound to the verified
+Supabase account ID; its normalized sample is stored under that account's private R2 prefix.
+The browser never receives a public bucket URL. Preview and reuse require an authenticated,
+owner-checked API request, and deletion removes both the database record and stored sample.
+
 ## 2. Create private Cloudflare R2 storage
 
 1. Create a private bucket named `ai-voice-generator-hq`.

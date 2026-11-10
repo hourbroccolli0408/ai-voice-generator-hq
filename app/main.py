@@ -79,6 +79,18 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 
 
+class SavedVoiceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    accent: str | None = Field(default=None, max_length=48)
+    language: str | None = Field(default=None, max_length=16)
+    use_tags: list[str] | None = Field(default=None, max_length=8)
+    default_preset: str | None = Field(default=None, max_length=24)
+
+
+VOICE_CONSENT_VERSION = "2026-11-10"
+DELIVERY_PRESETS = {"natural", "warm", "energetic", "dramatic", "calm"}
+
+
 def resolve_project(user_id: str, project_id: str) -> dict | None:
     project_id = project_id.strip()
     if not project_id:
@@ -95,6 +107,82 @@ def task_name(value: str, text: str) -> str:
         return cleaned
     fallback = " ".join(text.split())[:60]
     return fallback or "Untitled voiceover"
+
+
+def clean_saved_voice_fields(
+    *,
+    name: str,
+    accent: str,
+    language: str,
+    use_tags: list[str],
+    default_preset: str,
+) -> dict:
+    cleaned_name = " ".join(name.split())[:80]
+    if not cleaned_name:
+        raise HTTPException(status_code=400, detail="Give this voice a name")
+    cleaned_accent = " ".join(accent.split())[:48] or "Custom"
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Choose a supported primary language")
+    if default_preset not in DELIVERY_PRESETS:
+        raise HTTPException(status_code=400, detail="Choose a supported delivery preset")
+    cleaned_tags: list[str] = []
+    for tag in use_tags:
+        value = " ".join(tag.split())[:24]
+        if value and value.casefold() not in {item.casefold() for item in cleaned_tags}:
+            cleaned_tags.append(value)
+        if len(cleaned_tags) == 8:
+            break
+    return {
+        "name": cleaned_name,
+        "accent": cleaned_accent,
+        "language": language,
+        "use_tags": cleaned_tags,
+        "default_preset": default_preset,
+    }
+
+
+def public_saved_voice(voice: dict) -> dict:
+    result = {key: value for key, value in voice.items() if key != "locator"}
+    result["preview_url"] = f"/api/voices/{voice['id']}/audio"
+    return result
+
+
+async def normalize_uploaded_reference(
+    upload: UploadFile,
+    raw_path: Path,
+    normalized_path: Path,
+) -> None:
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    size = 0
+    try:
+        with raw_path.open("wb") as target:
+            while chunk := await upload.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(status_code=413, detail="Reference audio is too large")
+                target.write(chunk)
+        normalize_reference(raw_path, normalized_path)
+    except (ValueError, FileNotFoundError) as exc:
+        normalized_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        normalized_path.unlink(missing_ok=True)
+        raise
+    finally:
+        raw_path.unlink(missing_ok=True)
+
+
+def saved_reference_for_job(saved_voice: dict, job_id: str) -> Path:
+    destination = settings.uploads_dir / f"{job_id}.wav"
+    try:
+        return audio_storage.materialize(saved_voice["locator"], destination)
+    except Exception as exc:
+        logger.exception("Could not load saved voice %s", saved_voice["id"])
+        destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=502,
+            detail="That saved voice is temporarily unavailable",
+        ) from exc
 
 
 def public_job(job: dict) -> dict:
@@ -498,6 +586,148 @@ def create_project(project: ProjectCreate, user_id: str = Depends(get_current_us
     return repository.create_project(user_id, uuid.uuid4().hex, name)
 
 
+@app.get("/api/voices")
+def list_saved_voices(user_id: str = Depends(get_current_user)) -> list[dict]:
+    return [public_saved_voice(voice) for voice in repository.list_saved_voices(user_id)]
+
+
+@app.post("/api/voices", status_code=201)
+async def create_saved_voice(
+    reference: Annotated[UploadFile, File(...)],
+    name: Annotated[str, Form(...)],
+    accent: Annotated[str, Form()] = "Custom",
+    language: Annotated[str, Form()] = "en",
+    use_tags: Annotated[str, Form()] = "",
+    default_preset: Annotated[str, Form()] = "natural",
+    consent: Annotated[bool, Form()] = False,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    if not consent:
+        raise HTTPException(status_code=400, detail="Voice-owner consent is required")
+    fields = clean_saved_voice_fields(
+        name=name,
+        accent=accent,
+        language=language,
+        use_tags=use_tags.split(","),
+        default_preset=default_preset,
+    )
+    voice_id = uuid.uuid4().hex
+    suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
+    raw_path = settings.saved_voices_dir / f"{voice_id}-raw{suffix}"
+    normalized_path = settings.saved_voices_dir / f"{voice_id}.wav"
+    await normalize_uploaded_reference(reference, raw_path, normalized_path)
+    locator: str | None = None
+    try:
+        locator = audio_storage.store(
+            normalized_path,
+            f"saved-voices/{user_id}/{voice_id}.wav",
+        )
+        voice = repository.create_saved_voice(
+            user_id,
+            voice_id,
+            locator=locator,
+            consent_version=VOICE_CONSENT_VERSION,
+            **fields,
+        )
+    except Exception:
+        if locator:
+            try:
+                audio_storage.delete(locator)
+            except Exception:
+                logger.exception("Could not roll back saved voice audio")
+        else:
+            normalized_path.unlink(missing_ok=True)
+        raise
+    return public_saved_voice(voice)
+
+
+@app.patch("/api/voices/{voice_id}")
+def update_saved_voice(
+    voice_id: str,
+    update: SavedVoiceUpdate,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    existing = repository.get_saved_voice(voice_id, user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Saved voice not found")
+    values = update.model_dump(exclude_unset=True)
+    fields = clean_saved_voice_fields(
+        name=values.get("name", existing["name"]),
+        accent=values.get("accent", existing["accent"]),
+        language=values.get("language", existing["language"]),
+        use_tags=values.get("use_tags", existing["use_tags"]),
+        default_preset=values.get("default_preset", existing["default_preset"]),
+    )
+    voice = repository.update_saved_voice(voice_id, user_id, **fields)
+    assert voice is not None
+    return public_saved_voice(voice)
+
+
+@app.put("/api/voices/{voice_id}/sample")
+async def replace_saved_voice_sample(
+    voice_id: str,
+    reference: Annotated[UploadFile, File(...)],
+    consent: Annotated[bool, Form()] = False,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    voice = repository.get_saved_voice(voice_id, user_id)
+    if not voice:
+        raise HTTPException(status_code=404, detail="Saved voice not found")
+    if not consent:
+        raise HTTPException(status_code=400, detail="Voice-owner consent is required")
+    replacement_id = uuid.uuid4().hex
+    suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
+    raw_path = settings.saved_voices_dir / f"{replacement_id}-raw{suffix}"
+    normalized_path = settings.saved_voices_dir / f"{replacement_id}.wav"
+    await normalize_uploaded_reference(reference, raw_path, normalized_path)
+    locator = audio_storage.store(
+        normalized_path,
+        f"saved-voices/{user_id}/{voice_id}.wav",
+    )
+    updated = repository.update_saved_voice(
+        voice_id,
+        user_id,
+        locator=locator,
+        refresh_consent=True,
+        consent_version=VOICE_CONSENT_VERSION,
+    )
+    if locator != voice["locator"]:
+        try:
+            audio_storage.delete(voice["locator"])
+        except Exception:
+            logger.exception("Could not remove replaced saved voice audio")
+    assert updated is not None
+    return public_saved_voice(updated)
+
+
+@app.delete("/api/voices/{voice_id}")
+def delete_saved_voice(voice_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    voice = repository.get_saved_voice(voice_id, user_id)
+    if not voice:
+        raise HTTPException(status_code=404, detail="Saved voice not found")
+    try:
+        audio_storage.delete(voice["locator"])
+    except Exception as exc:
+        logger.exception("Could not remove saved voice audio")
+        raise HTTPException(status_code=502, detail="Could not securely delete that voice") from exc
+    repository.delete_saved_voice(voice_id, user_id)
+    return {"deleted": True}
+
+
+@app.get("/api/voices/{voice_id}/audio")
+def get_saved_voice_audio(voice_id: str, user_id: str = Depends(get_current_user)):
+    voice = repository.get_saved_voice(voice_id, user_id)
+    if not voice:
+        raise HTTPException(status_code=404, detail="Saved voice not found")
+    remote_url = audio_storage.url(voice["locator"])
+    if remote_url:
+        return RedirectResponse(remote_url)
+    path = Path(voice["locator"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Saved voice audio is unavailable")
+    return FileResponse(path, media_type="audio/wav")
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str, user_id: str = Depends(get_current_user)) -> dict:
     job = repository.get_job(job_id, user_id)
@@ -568,6 +798,7 @@ async def generate(
     model: Annotated[str, Form()] = "multilingual-v3",
     language: Annotated[str, Form()] = "en",
     voice: Annotated[str, Form()] = "clone",
+    saved_voice_id: Annotated[str, Form()] = "",
     exaggeration: Annotated[float, Form()] = 0.5,
     cfg_weight: Annotated[float, Form()] = 0.5,
     temperature: Annotated[float, Form()] = 0.8,
@@ -580,15 +811,22 @@ async def generate(
 ) -> dict:
     text = text.strip()
     project = resolve_project(user_id, project_id)
+    saved_voice_id = saved_voice_id.strip()
+    saved_voice = None
+    if saved_voice_id:
+        saved_voice = repository.get_saved_voice(saved_voice_id, user_id)
+        if not saved_voice:
+            raise HTTPException(status_code=400, detail="That saved voice is unavailable")
+        voice = "clone"
     if voice not in VOICE_OPTIONS:
         raise HTTPException(status_code=400, detail="Unsupported voice")
     voice_option = VOICE_OPTIONS[voice]
     is_clone = voice_option["engine"] == "chatterbox"
     if voice_option["engine"] == "chatterbox-default" and model != "multilingual-v3":
         raise HTTPException(status_code=400, detail="Global Narrator requires Multilingual V3")
-    if is_clone and not consent:
+    if is_clone and not saved_voice and not consent:
         raise HTTPException(status_code=400, detail="Voice-owner consent is required")
-    if is_clone and reference is None:
+    if is_clone and not saved_voice and reference is None:
         raise HTTPException(status_code=400, detail="Add or record a reference voice first")
     if not text:
         raise HTTPException(status_code=400, detail="Add a script to generate")
@@ -612,7 +850,9 @@ async def generate(
 
     job_id = uuid.uuid4().hex
     normalized_path: Path | None = None
-    if is_clone and reference is not None:
+    if saved_voice:
+        normalized_path = saved_reference_for_job(saved_voice, job_id)
+    elif is_clone and reference is not None:
         upload_suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
         raw_path = settings.uploads_dir / f"{job_id}-raw{upload_suffix}"
         normalized_path = settings.uploads_dir / f"{job_id}.wav"
@@ -644,8 +884,9 @@ async def generate(
         "completed_at": None,
         "model": model,
         "voice": voice,
-        "voice_label": voice_option["label"],
-        "voice_source": "clone" if is_clone else "ready-made",
+        "voice_label": saved_voice["name"] if saved_voice else voice_option["label"],
+        "voice_source": "saved" if saved_voice else ("clone" if is_clone else "ready-made"),
+        "saved_voice_id": saved_voice_id or None,
         "language": language,
         "characters": len(text),
         "credits": credits,
@@ -661,7 +902,7 @@ async def generate(
         "audio_url": None,
         "download_name": None,
         "error": None,
-        "consent_attested": bool(consent) if is_clone else False,
+        "consent_attested": bool(saved_voice or consent) if is_clone else False,
     }
     try:
         repository.create_job_and_reserve(user_id, job, credits)
@@ -676,6 +917,9 @@ async def generate(
                 "balance": exc.balance,
             },
         ) from exc
+
+    if saved_voice:
+        repository.mark_saved_voice_used(saved_voice_id, user_id)
 
     options = GenerationOptions(
         model, language, exaggeration, cfg_weight, temperature, voice, speed
@@ -693,6 +937,7 @@ async def generate_multilingual(
     reference: Annotated[UploadFile | None, File()] = None,
     source_language: Annotated[str, Form()] = "auto",
     voice: Annotated[str, Form()] = "global",
+    saved_voice_id: Annotated[str, Form()] = "",
     exaggeration: Annotated[float, Form()] = 0.5,
     cfg_weight: Annotated[float, Form()] = 0.5,
     temperature: Annotated[float, Form()] = 0.8,
@@ -704,6 +949,13 @@ async def generate_multilingual(
 ) -> dict:
     text = text.strip()
     project = resolve_project(user_id, project_id)
+    saved_voice_id = saved_voice_id.strip()
+    saved_voice = None
+    if saved_voice_id:
+        saved_voice = repository.get_saved_voice(saved_voice_id, user_id)
+        if not saved_voice:
+            raise HTTPException(status_code=400, detail="That saved voice is unavailable")
+        voice = "clone"
     targets = list(dict.fromkeys(code.strip() for code in target_languages.split(",") if code.strip()))
     if not text:
         raise HTTPException(status_code=400, detail="Add a script to translate")
@@ -733,9 +985,9 @@ async def generate_multilingual(
         )
     if any(language not in voice_option["languages"] for language in targets):
         raise HTTPException(status_code=400, detail="That voice does not support every output language")
-    if is_clone and not consent:
+    if is_clone and not saved_voice and not consent:
         raise HTTPException(status_code=400, detail="Voice-owner consent is required")
-    if is_clone and reference is None:
+    if is_clone and not saved_voice and reference is None:
         raise HTTPException(status_code=400, detail="Add or record a reference voice first")
     if not 0 <= exaggeration <= 1 or not 0 <= cfg_weight <= 1 or not 0.1 <= temperature <= 2:
         raise HTTPException(status_code=400, detail="Generation controls are out of range")
@@ -744,7 +996,9 @@ async def generate_multilingual(
 
     job_id = uuid.uuid4().hex
     normalized_path: Path | None = None
-    if is_clone and reference is not None:
+    if saved_voice:
+        normalized_path = saved_reference_for_job(saved_voice, job_id)
+    elif is_clone and reference is not None:
         upload_suffix = Path(reference.filename or "reference.wav").suffix.lower() or ".audio"
         raw_path = settings.uploads_dir / f"{job_id}-raw{upload_suffix}"
         normalized_path = settings.uploads_dir / f"{job_id}.wav"
@@ -776,8 +1030,9 @@ async def generate_multilingual(
         "completed_at": None,
         "model": "multilingual-v3",
         "voice": voice,
-        "voice_label": voice_option["label"],
-        "voice_source": "clone" if is_clone else "ready-made",
+        "voice_label": saved_voice["name"] if saved_voice else voice_option["label"],
+        "voice_source": "saved" if saved_voice else ("clone" if is_clone else "ready-made"),
+        "saved_voice_id": saved_voice_id or None,
         "source_language": source_language,
         "target_languages": targets,
         "language": "multiple",
@@ -792,7 +1047,7 @@ async def generate_multilingual(
         "audio_url": None,
         "download_name": None,
         "error": None,
-        "consent_attested": bool(consent) if is_clone else False,
+        "consent_attested": bool(saved_voice or consent) if is_clone else False,
     }
     try:
         repository.create_job_and_reserve(user_id, job, credits)
@@ -807,6 +1062,9 @@ async def generate_multilingual(
                 "balance": exc.balance,
             },
         ) from exc
+
+    if saved_voice:
+        repository.mark_saved_voice_used(saved_voice_id, user_id)
 
     executor.submit(
         run_multilingual_generation,

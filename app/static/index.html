@@ -135,7 +135,7 @@
           <div><p class="kicker">CONSENT FIRST, ALWAYS</p><h2>A powerful voice tool with a clear line.</h2></div>
           <div class="safety-grid">
             <article><span>✓</span><h3>Explicit authorization</h3><p>Cloning requires the user to confirm ownership or direct speaker permission.</p></article>
-            <article><span>⌫</span><h3>Reference deletion</h3><p>Uploaded reference samples are removed after the generation finishes.</p></article>
+            <article><span>⌫</span><h3>You control retention</h3><p>One-time samples are removed after generation. Voices you deliberately save stay private until you delete them.</p></article>
             <article><span>◉</span><h3>Provenance</h3><p>Generated speech includes a provenance watermark and stays private to the account.</p></article>
           </div>
         </section>
@@ -195,7 +195,8 @@
             <details><summary>How does the translation workflow work?<span>＋</span></summary><p>Paste one source script, enable translation, let the studio detect the source language or choose it yourself, then select up to five output languages. The studio translates the text and creates a separate voiceover for every selected language. Each output uses credits based on the original source-script length.</p></details>
             <details><summary>Can I clone any person’s voice?<span>＋</span></summary><p>No. You may only clone your own voice or a speaker who has given you explicit permission. The studio requires a consent attestation before cloning. Non-consensual impersonation, fraud, deception and misuse of another person’s identity are prohibited.</p></details>
             <details><summary>What makes a good voice-cloning reference?<span>＋</span></summary><p>Use a clean 6–30 second recording containing one speaker, natural speech and as little music, echo or background noise as possible. The studio accepts WAV, MP3, M4A and WebM uploads, and you can also record a sample in the browser. A clearer reference usually produces a more consistent result.</p></details>
-            <details><summary>What happens to my reference audio?<span>＋</span></summary><p>The reference sample is normalized for the requested generation and then deleted when that generation finishes, including when the job fails. Finished audio and job information remain available only through the signed-in account’s private history under the current retention process.</p></details>
+            <details><summary>What happens to my reference audio?<span>＋</span></summary><p>A one-time reference is normalized for the requested generation and deleted when that job finishes, including when it fails. If you explicitly choose Save to My Voices, the normalized sample and its consent record are stored privately so you can reuse it across projects and languages. Only your signed-in account can list, preview, rename, replace or delete it, and deleting it removes the stored sample.</p></details>
+            <details><summary>Can I save and reuse my own voice?<span>＋</span></summary><p>Yes. Select Create a new voice, add a clean 6–30 second sample, confirm the speaker’s permission, switch on Save to My Voices and give it a recognizable name. You can set an accent, primary language, use-case tags and default delivery. Saved voices appear at the top of the Studio voice picker and can be managed from your profile.</p></details>
             <details><summary>What can I download, and where do I find past work?<span>＋</span></summary><p>Completed generations are delivered as WAV audio. Open History to replay or download previous jobs, individual candidate takes and each language output. History is tied to the signed-in account so another visitor cannot browse your generations.</p></details>
             <details><summary>Do failed jobs use credits?<span>＋</span></summary><p>No. Credits are reserved when a job starts so two jobs cannot spend the same balance. If generation fails, the reserved amount is returned automatically. Successful jobs use the displayed estimate, including additional takes or language outputs.</p></details>
             <details><summary>How long can a script be?<span>＋</span></summary><p>The current editor accepts up to 5,000 characters per generation. For longer projects, divide the script at natural section or paragraph breaks. This also makes it easier to compare takes, correct pronunciation and regenerate only the part that needs revision.</p></details>
@@ -209,7 +210,7 @@
 
       <main class="marketing-page legal-page hidden" data-route="privacy">
         <p class="kicker">LEGAL</p><h1>Privacy policy</h1><p class="legal-updated">Last updated November 9, 2026</p>
-        <section><h2>What we collect</h2><p>We collect account details, generation settings, scripts, job records and technical logs needed to operate AI Voice HQ. Voice reference files are processed only for the requested generation. For paid accounts, we store the Paddle customer, subscription and transaction identifiers needed to provide credits and account support.</p><h2>Payments</h2><p>Paddle is our merchant of record and processes card details, billing addresses, taxes, invoices, renewals and refunds. AI Voice HQ does not receive or store complete card numbers or card security codes.</p><h2>How we use information</h2><p>We use this information to provide the service, secure accounts, prevent abuse, diagnose failures and improve product reliability. We do not sell personal information.</p><h2>Voice reference files</h2><p>Reference audio used for voice cloning is deleted after generation. Finished audio and job history remain available to the signed-in account until removed under our retention process.</p><h2>Service providers</h2><p>We use infrastructure providers for authentication, databases, GPU processing, file storage and subscription billing. They process data only to provide those services.</p><h2>Your choices</h2><p>You may request account or stored-data deletion by emailing hello@aivoicegeneratorhq.com.</p></section>
+        <section><h2>What we collect</h2><p>We collect account details, generation settings, scripts, job records and technical logs needed to operate AI Voice HQ. Voice reference files are processed only for the requested generation unless you explicitly save one to My Voices. For paid accounts, we store the Paddle customer, subscription and transaction identifiers needed to provide credits and account support.</p><h2>Payments</h2><p>Paddle is our merchant of record and processes card details, billing addresses, taxes, invoices, renewals and refunds. AI Voice HQ does not receive or store complete card numbers or card security codes.</p><h2>How we use information</h2><p>We use this information to provide the service, secure accounts, prevent abuse, diagnose failures and improve product reliability. We do not sell personal information.</p><h2>Voice reference files</h2><p>One-time reference audio is deleted after generation. A reference you deliberately save to My Voices is stored in private audio storage with its consent attestation and remains available only to your signed-in account until you replace or delete it. Finished audio and job history remain available to the signed-in account under our current retention process.</p><h2>Service providers</h2><p>We use infrastructure providers for authentication, databases, GPU processing, file storage and subscription billing. They process data only to provide those services.</p><h2>Your choices</h2><p>You can delete a saved voice and its stored sample directly from My Voices. You may request account or other stored-data deletion by emailing hello@aivoicegeneratorhq.com.</p></section>
       </main>
 
       <main class="marketing-page legal-page hidden" data-route="terms">
@@ -271,7 +272,7 @@
               <small id="runtime-detail">Checking runtime…</small>
             </div>
           </div>
-          <p class="privacy-note">Voice cloning requires consent. Reference samples are deleted after generation.</p>
+          <p class="privacy-note">Voice cloning requires consent. One-time samples are deleted; saved voices remain private until you remove them.</p>
         </div>
       </aside>
 
@@ -329,10 +330,13 @@
                     <select id="voice-accent" aria-label="Filter voices by accent"><option value="">All accents</option></select>
                     <select id="voice-gender" aria-label="Filter voices by gender"><option value="">All voices</option></select>
                   </div>
-                  <label class="voice-picker">
-                    <span>Voice <small id="voice-count"></small></span>
-                    <select id="voice" name="voice"></select>
-                  </label>
+                  <div class="voice-picker-row">
+                    <label class="voice-picker">
+                      <span>Voice <small id="voice-count"></small></span>
+                      <select id="voice" name="voice"></select>
+                    </label>
+                    <button type="button" class="manage-voices-button" id="manage-voices-button">My Voices</button>
+                  </div>
                 </div>
                 <p class="voice-description" id="voice-description"></p>
 
@@ -384,6 +388,22 @@
                       to clone and use it.
                     </span>
                   </label>
+
+                  <label class="save-voice-toggle">
+                    <input type="checkbox" id="save-voice-toggle" />
+                    <span class="toggle-track"><i></i></span>
+                    <span><strong>Save to My Voices</strong><small>Reuse this authorized voice across projects and languages.</small></span>
+                  </label>
+                  <div class="save-voice-fields hidden" id="save-voice-fields">
+                    <label><span>Voice name</span><input id="saved-voice-name" maxlength="80" placeholder="For example, My narration voice" /></label>
+                    <div>
+                      <label><span>Accent</span><input id="saved-voice-accent" maxlength="48" placeholder="For example, Indian English" /></label>
+                      <label><span>Primary language</span><select id="saved-voice-language"></select></label>
+                    </div>
+                    <label><span>Use-case tags</span><input id="saved-voice-tags" maxlength="200" placeholder="Narration, explainers, podcast" /></label>
+                    <label><span>Default delivery</span><select id="saved-voice-preset"><option value="natural">Natural</option><option value="warm">Warm</option><option value="energetic">Energetic</option><option value="dramatic">Dramatic</option><option value="calm">Calm</option></select></label>
+                    <p>Stored in private audio storage and available only to your account until you delete it.</p>
+                  </div>
                 </div>
               </section>
 
@@ -543,10 +563,25 @@
         <span><small>AVAILABLE</small><strong><b id="profile-credits">—</b> credits</strong></span>
       </div>
       <button type="button" class="profile-action primary" id="billing-button"><span>◇</span><b id="billing-action-label">View plans</b><i>→</i></button>
+      <button type="button" class="profile-action" id="profile-voices-button"><span>◉</span><b>My Voices</b><i>→</i></button>
       <a class="profile-action" href="/privacy"><span>⌾</span><b>Account &amp; data</b><i>→</i></a>
       <a class="profile-action" href="mailto:hello@aivoicegeneratorhq.com"><span>?</span><b>Help &amp; support</b><i>→</i></a>
       <button type="button" class="profile-action danger hidden" id="signout-button"><span>↪</span><b>Sign out</b></button>
     </aside>
+
+    <div class="voice-library-modal hidden" id="voice-library-modal" role="dialog" aria-modal="true" aria-labelledby="voice-library-title">
+      <section>
+        <header>
+          <div><p class="kicker">PRIVATE VOICE LIBRARY</p><h2 id="voice-library-title">My Voices</h2><p>Saved samples belong only to your account. Preview, rename, replace or permanently delete them here.</p></div>
+          <button type="button" id="close-voice-library" aria-label="Close My Voices">×</button>
+        </header>
+        <div class="voice-library-list" id="voice-library-list"></div>
+        <footer>
+          <button type="button" class="secondary-button" id="create-voice-from-library">＋ Create a new voice</button>
+          <span><i></i> Private to your signed-in account</span>
+        </footer>
+      </section>
+    </div>
 
     <div class="auth-overlay hidden" id="auth-overlay">
       <form class="auth-card" id="auth-form">

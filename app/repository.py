@@ -51,6 +51,27 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class SavedVoice(Base):
+    __tablename__ = "saved_voices"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    locator: Mapped[str] = mapped_column(Text)
+    accent: Mapped[str] = mapped_column(String(48), default="Custom")
+    language: Mapped[str] = mapped_column(String(16), default="en")
+    use_tags: Mapped[str] = mapped_column(Text, default="[]")
+    default_preset: Mapped[str] = mapped_column(String(24), default="natural")
+    consent_version: Mapped[str] = mapped_column(String(24), default="2026-11-10")
+    consent_attested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class BillingEvent(Base):
     __tablename__ = "billing_events"
 
@@ -280,6 +301,117 @@ class Repository:
                 }
                 for row in projects
             ]
+
+    @staticmethod
+    def _saved_voice_dict(row: SavedVoice) -> dict:
+        return {
+            "id": row.id,
+            "name": row.name,
+            "accent": row.accent,
+            "language": row.language,
+            "use_tags": json.loads(row.use_tags or "[]"),
+            "default_preset": row.default_preset,
+            "consent_attested_at": row.consent_attested_at.isoformat(),
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
+            "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+            "use_count": row.use_count,
+        }
+
+    def create_saved_voice(
+        self,
+        user_id: str,
+        voice_id: str,
+        *,
+        name: str,
+        locator: str,
+        accent: str,
+        language: str,
+        use_tags: list[str],
+        default_preset: str,
+        consent_version: str,
+    ) -> dict:
+        self._ensure_schema()
+        with Session(self.engine) as session, session.begin():
+            self._ensure_user(session, user_id)
+            now = utcnow()
+            row = SavedVoice(
+                id=voice_id,
+                user_id=user_id,
+                name=name,
+                locator=locator,
+                accent=accent,
+                language=language,
+                use_tags=json.dumps(use_tags),
+                default_preset=default_preset,
+                consent_version=consent_version,
+                consent_attested_at=now,
+                created_at=now,
+                updated_at=now,
+                use_count=0,
+            )
+            session.add(row)
+            session.flush()
+            return self._saved_voice_dict(row)
+
+    def list_saved_voices(self, user_id: str) -> list[dict]:
+        self._ensure_schema()
+        with Session(self.engine) as session:
+            rows = session.scalars(
+                select(SavedVoice)
+                .where(SavedVoice.user_id == user_id)
+                .order_by(SavedVoice.last_used_at.desc(), SavedVoice.created_at.desc())
+            ).all()
+            return [self._saved_voice_dict(row) for row in rows]
+
+    def get_saved_voice(self, voice_id: str, user_id: str) -> dict | None:
+        self._ensure_schema()
+        with Session(self.engine) as session:
+            row = session.get(SavedVoice, voice_id)
+            if not row or row.user_id != user_id:
+                return None
+            result = self._saved_voice_dict(row)
+            result["locator"] = row.locator
+            return result
+
+    def update_saved_voice(self, voice_id: str, user_id: str, **changes) -> dict | None:
+        self._ensure_schema()
+        with Session(self.engine) as session, session.begin():
+            row = session.get(SavedVoice, voice_id)
+            if not row or row.user_id != user_id:
+                return None
+            for key in ("name", "accent", "language", "default_preset", "locator"):
+                if key in changes:
+                    setattr(row, key, changes[key])
+            if "use_tags" in changes:
+                row.use_tags = json.dumps(changes["use_tags"])
+            if changes.get("refresh_consent"):
+                row.consent_attested_at = utcnow()
+                row.consent_version = changes.get("consent_version", row.consent_version)
+            row.updated_at = utcnow()
+            session.flush()
+            return self._saved_voice_dict(row)
+
+    def mark_saved_voice_used(self, voice_id: str, user_id: str) -> None:
+        self._ensure_schema()
+        with Session(self.engine) as session, session.begin():
+            row = session.get(SavedVoice, voice_id)
+            if not row or row.user_id != user_id:
+                return
+            row.last_used_at = utcnow()
+            row.use_count += 1
+            row.updated_at = utcnow()
+
+    def delete_saved_voice(self, voice_id: str, user_id: str) -> dict | None:
+        self._ensure_schema()
+        with Session(self.engine) as session, session.begin():
+            row = session.get(SavedVoice, voice_id)
+            if not row or row.user_id != user_id:
+                return None
+            result = self._saved_voice_dict(row)
+            result["locator"] = row.locator
+            session.delete(row)
+            return result
 
     def refund(self, user_id: str, job_id: str, credits: int) -> None:
         self._ensure_schema()

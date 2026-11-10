@@ -325,3 +325,79 @@ def test_translation_rejects_english_only_voice(monkeypatch, tmp_path):
     assert response.status_code == 400
     assert "global narrator" in response.json()["detail"].lower()
 
+
+def test_saved_voice_lifecycle_and_reuse(monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICEFORGE_ENGINE", "mock")
+    monkeypatch.setenv("VOICEFORGE_DATA_DIR", str(tmp_path / "data"))
+    import app.config
+    import app.main
+
+    importlib.reload(app.config)
+    module = importlib.reload(app.main)
+    reference = make_reference(tmp_path / "saved-reference.wav")
+    with TestClient(module.app) as client:
+        with reference.open("rb") as audio:
+            rejected = client.post(
+                "/api/voices",
+                files={"reference": ("saved-reference.wav", audio, "audio/wav")},
+                data={"name": "My Narrator", "consent": "false"},
+            )
+        assert rejected.status_code == 400
+
+        with reference.open("rb") as audio:
+            created = client.post(
+                "/api/voices",
+                files={"reference": ("saved-reference.wav", audio, "audio/wav")},
+                data={
+                    "name": "My Narrator",
+                    "accent": "Indian English",
+                    "language": "en",
+                    "use_tags": "Narration, Podcast",
+                    "default_preset": "warm",
+                    "consent": "true",
+                },
+            )
+        assert created.status_code == 201
+        voice = created.json()
+        assert voice["name"] == "My Narrator"
+        assert voice["use_tags"] == ["Narration", "Podcast"]
+        assert "locator" not in voice
+        assert client.get(voice["preview_url"]).status_code == 200
+
+        renamed = client.patch(f"/api/voices/{voice['id']}", json={"name": "Campaign Voice"})
+        assert renamed.status_code == 200
+        assert renamed.json()["name"] == "Campaign Voice"
+
+        response = client.post(
+            "/api/generate",
+            data={
+                "text": "Reuse my private saved voice.",
+                "voice": "clone",
+                "saved_voice_id": voice["id"],
+                "model": "nano",
+                "language": "en",
+                "consent": "false",
+            },
+        )
+        assert response.status_code == 202
+        job = response.json()
+        assert job["voice_source"] == "saved"
+        assert job["voice_label"] == "Campaign Voice"
+        for _ in range(100):
+            job = client.get(f"/api/jobs/{job['id']}").json()
+            if job["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.01)
+        assert job["status"] == "completed"
+
+        voices = client.get("/api/voices").json()
+        assert voices[0]["use_count"] == 1
+        locator = module.repository.get_saved_voice(voice["id"], "local-development-user")[
+            "locator"
+        ]
+        assert Path(locator).exists()
+        deleted = client.delete(f"/api/voices/{voice['id']}")
+        assert deleted.status_code == 200
+        assert not Path(locator).exists()
+        assert client.get("/api/voices").json() == []
+

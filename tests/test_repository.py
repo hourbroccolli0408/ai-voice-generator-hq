@@ -49,3 +49,33 @@ def test_projects_are_private_and_count_their_jobs(tmp_path):
     assert projects[0]["name"] == "Podcast Launch"
     assert projects[0]["job_count"] == 1
     assert repository.get_project("project-1", "user-2") is None
+
+
+def test_saved_voices_are_private_editable_and_track_usage(tmp_path):
+    repository = Repository(f"sqlite:///{(tmp_path / 'voices.db').as_posix()}", 100)
+    voice = repository.create_saved_voice(
+        "user-1",
+        "voice-1",
+        name="My Narrator",
+        locator="private/sample.wav",
+        accent="Indian English",
+        language="en",
+        use_tags=["Narration", "Podcast"],
+        default_preset="warm",
+        consent_version="test",
+    )
+
+    assert voice["name"] == "My Narrator"
+    assert repository.get_saved_voice("voice-1", "user-2") is None
+    assert repository.list_saved_voices("user-2") == []
+
+    repository.mark_saved_voice_used("voice-1", "user-1")
+    updated = repository.update_saved_voice("voice-1", "user-1", name="Brand Voice")
+    assert updated["name"] == "Brand Voice"
+    assert updated["use_count"] == 1
+    assert updated["last_used_at"] is not None
+
+    assert repository.delete_saved_voice("voice-1", "user-2") is None
+    deleted = repository.delete_saved_voice("voice-1", "user-1")
+    assert deleted["locator"] == "private/sample.wav"
+    assert repository.list_saved_voices("user-1") == []

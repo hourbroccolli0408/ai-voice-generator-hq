@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import boto3
@@ -52,3 +53,20 @@ class AudioStorage:
         if download_name:
             params["ResponseContentDisposition"] = f'attachment; filename="{download_name}"'
         return self.client.generate_presigned_url("get_object", Params=params, ExpiresIn=900)
+
+    def materialize(self, locator: str, destination: Path) -> Path:
+        """Copy a private stored object to a short-lived local working file."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if self.backend == "local":
+            shutil.copyfile(locator, destination)
+            return destination
+        assert self.client is not None and settings.r2_bucket
+        self.client.download_file(settings.r2_bucket, locator, str(destination))
+        return destination
+
+    def delete(self, locator: str) -> None:
+        if self.backend == "local":
+            Path(locator).unlink(missing_ok=True)
+            return
+        assert self.client is not None and settings.r2_bucket
+        self.client.delete_object(Bucket=settings.r2_bucket, Key=locator)

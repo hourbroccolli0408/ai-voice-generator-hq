@@ -13,6 +13,8 @@ const state = {
   billingCycle: "annual",
   paddleReady: false,
   projects: [],
+  savedVoices: [],
+  savedVoicePreview: null,
   historyProjectId: null,
   account: null,
 };
@@ -349,7 +351,11 @@ async function initAuth() {
       loadAccount();
       loadHistory();
       loadProjects();
+      loadSavedVoices();
       maybeOpenPendingCheckout();
+    } else {
+      state.savedVoices = [];
+      renderSavedVoiceLibrary();
     }
   });
 }
@@ -382,6 +388,7 @@ async function submitAuth(createAccount = false) {
   await loadAccount();
   await loadHistory();
   await loadProjects();
+  await loadSavedVoices();
   maybeOpenPendingCheckout();
 }
 
@@ -444,6 +451,197 @@ async function createProject(event) {
   toast(`${project.name} is ready.`);
 }
 
+async function loadSavedVoices({ refreshPicker = true } = {}) {
+  if (state.config?.auth?.mode === "supabase" && !state.session) {
+    state.savedVoices = [];
+    renderSavedVoiceLibrary();
+    return;
+  }
+  const response = await apiFetch("/api/voices");
+  if (!response.ok) return;
+  state.savedVoices = await response.json();
+  renderSavedVoiceLibrary();
+  if (refreshPicker && state.config && elements.model.options.length) {
+    refreshVoiceFilters();
+    filterVoices();
+  }
+}
+
+function renderSavedVoiceLibrary() {
+  const list = $("#voice-library-list");
+  if (!list) return;
+  if (!state.savedVoices.length) {
+    list.innerHTML = `
+      <div class="voice-library-empty">
+        <span>◌</span><h3>No saved voices yet</h3>
+        <p>Create an authorized voice in the Studio and switch on Save to My Voices.</p>
+      </div>`;
+    return;
+  }
+  list.innerHTML = state.savedVoices.map((voice) => {
+    const tags = (voice.use_tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
+    const used = voice.last_used_at
+      ? `Used ${new Date(voice.last_used_at).toLocaleDateString()}`
+      : "Ready to use";
+    return `
+      <article class="saved-voice-card" data-saved-voice-id="${voice.id}">
+        <div class="saved-voice-mark">${escapeHtml(voice.name.charAt(0).toUpperCase())}</div>
+        <div class="saved-voice-copy">
+          <strong>${escapeHtml(voice.name)}</strong>
+          <small>${escapeHtml(voice.accent || "Custom")} · ${escapeHtml(languageName(voice.language))} · ${escapeHtml(voice.default_preset)} delivery</small>
+          <div class="saved-voice-tags">${tags || "<span>Authorized clone</span>"}</div>
+          <p>Consent recorded · ${used}</p>
+        </div>
+        <div class="saved-voice-actions">
+          <button type="button" data-voice-action="use">Use voice</button>
+          <button type="button" data-voice-action="preview">▶ Preview sample</button>
+          <button type="button" data-voice-action="rename">Rename</button>
+          <button type="button" data-voice-action="replace">Replace sample</button>
+          <button type="button" class="danger" data-voice-action="delete">Delete</button>
+        </div>
+      </article>`;
+  }).join("");
+}
+
+function openVoiceLibrary() {
+  renderSavedVoiceLibrary();
+  $("#profile-menu").classList.add("hidden");
+  $("#voice-library-modal").classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+function closeVoiceLibrary() {
+  state.savedVoicePreview?.pause();
+  $("#voice-library-modal").classList.add("hidden");
+  document.body.classList.remove("modal-open");
+}
+
+async function createSavedVoiceFromForm() {
+  const name = $("#saved-voice-name").value.trim();
+  if (!name) throw new Error("Give this saved voice a name.");
+  const body = new FormData();
+  body.append("reference", state.file);
+  body.append("name", name);
+  body.append("accent", $("#saved-voice-accent").value.trim() || "Custom");
+  body.append("language", $("#saved-voice-language").value || "en");
+  body.append("use_tags", $("#saved-voice-tags").value.trim());
+  body.append("default_preset", $("#saved-voice-preset").value);
+  body.append("consent", "true");
+  const response = await apiFetch("/api/voices", { method: "POST", body });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || "Could not save this voice");
+  await loadSavedVoices({ refreshPicker: false });
+  refreshVoiceFilters();
+  filterVoices();
+  elements.voice.value = `saved:${result.id}`;
+  clearFile();
+  $("#save-voice-toggle").checked = false;
+  $("#save-voice-fields").classList.add("hidden");
+  renderVoiceMode();
+  toast(`${result.name} was saved privately.`);
+  return result;
+}
+
+async function handleSavedVoiceAction(event) {
+  const button = event.target.closest("[data-voice-action]");
+  if (!button) return;
+  const card = button.closest("[data-saved-voice-id]");
+  const voice = state.savedVoices.find((item) => item.id === card?.dataset.savedVoiceId);
+  if (!voice) return;
+  const action = button.dataset.voiceAction;
+  try {
+    if (action === "use") {
+      closeVoiceLibrary();
+      switchView("studio");
+      elements.voiceSearch.value = "";
+      elements.voiceAccent.value = "";
+      elements.voiceGender.value = "";
+      filterVoices();
+      elements.voice.value = `saved:${voice.id}`;
+      applyStudioPreset(voice.default_preset || "natural");
+      renderVoiceMode();
+      elements.voice.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (action === "preview") {
+      if (state.savedVoicePreview && state.savedVoicePreview.dataset.voiceId === voice.id) {
+        if (state.savedVoicePreview.paused) await state.savedVoicePreview.play();
+        else state.savedVoicePreview.pause();
+        return;
+      }
+      state.savedVoicePreview?.pause();
+      button.disabled = true;
+      const response = await apiFetch(voice.preview_url);
+      if (!response.ok) throw new Error("Could not load that private sample");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const audio = new Audio(objectUrl);
+      audio.dataset.voiceId = voice.id;
+      state.savedVoicePreview = audio;
+      audio.addEventListener("ended", () => {
+        button.textContent = "▶ Preview sample";
+        URL.revokeObjectURL(objectUrl);
+      }, { once: true });
+      audio.addEventListener("pause", () => { button.textContent = "▶ Preview sample"; });
+      button.textContent = "❚❚ Pause";
+      button.disabled = false;
+      await audio.play();
+      return;
+    }
+    if (action === "rename") {
+      const name = window.prompt("Name this voice", voice.name)?.trim();
+      if (!name || name === voice.name) return;
+      const response = await apiFetch(`/api/voices/${voice.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Could not rename that voice");
+      await loadSavedVoices();
+      toast("Voice renamed.");
+      return;
+    }
+    if (action === "replace") {
+      const confirmed = window.confirm("Confirm that you own this replacement sample or have the speaker's explicit permission to use it.");
+      if (!confirmed) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "audio/*,.wav,.mp3,.m4a,.webm,.flac";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const body = new FormData();
+        body.append("reference", file);
+        body.append("consent", "true");
+        button.disabled = true;
+        const response = await apiFetch(`/api/voices/${voice.id}/sample`, { method: "PUT", body });
+        const result = await response.json();
+        button.disabled = false;
+        if (!response.ok) return toast(result.detail || "Could not replace that sample", true);
+        await loadSavedVoices();
+        toast("Voice sample replaced securely.");
+      });
+      input.click();
+      return;
+    }
+    if (action === "delete") {
+      const confirmed = window.confirm(`Permanently delete ${voice.name} and its stored voice sample? This cannot be undone.`);
+      if (!confirmed) return;
+      button.disabled = true;
+      const response = await apiFetch(`/api/voices/${voice.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.detail || "Could not delete that voice");
+      }
+      await loadSavedVoices();
+      toast(`${voice.name} was permanently deleted.`);
+    }
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message, true);
+  }
+}
+
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -495,7 +693,51 @@ function updateScriptMeta() {
 }
 
 function isCloneMode() {
+  const voice = currentVoice();
+  return voice?.engine === "chatterbox";
+}
+
+function isNewCloneMode() {
   return elements.voice.value === "clone";
+}
+
+function selectedSavedVoice() {
+  if (!elements.voice.value.startsWith("saved:")) return null;
+  const id = elements.voice.value.slice(6);
+  return state.savedVoices.find((voice) => voice.id === id) || null;
+}
+
+function savedVoiceOption(voice) {
+  return {
+    label: voice.name,
+    description: "Your private, reusable authorized voice",
+    accent: voice.accent || "Custom",
+    gender: "Custom",
+    style: voice.default_preset || "natural",
+    use_cases: voice.use_tags || [],
+    engine: "chatterbox",
+    languages: state.config.models["multilingual-v3"].languages,
+    savedVoice: voice,
+  };
+}
+
+function currentVoice() {
+  const saved = selectedSavedVoice();
+  return saved ? savedVoiceOption(saved) : state.config.voices[elements.voice.value];
+}
+
+function allVoiceEntries() {
+  const saved = state.savedVoices.map((voice) => ({
+    value: `saved:${voice.id}`,
+    voice: savedVoiceOption(voice),
+    source: "saved",
+  }));
+  const house = Object.entries(state.config.voices).map(([value, voice]) => ({
+    value,
+    voice,
+    source: value === "clone" ? "create" : "house",
+  }));
+  return [...saved, ...house];
 }
 
 function selectedTargetLanguages() {
@@ -536,7 +778,7 @@ function renderTranslationMode() {
     ? "Translate & generate"
     : "Generate voiceover";
   if (translating) {
-    const voice = state.config.voices[elements.voice.value];
+    const voice = currentVoice();
     if (!voice || !["chatterbox", "chatterbox-default"].includes(voice.engine)) {
       elements.voice.value = "global";
     }
@@ -552,19 +794,44 @@ function voiceSearchText(voice) {
     .toLowerCase();
 }
 
+function refreshVoiceFilters() {
+  const entries = allVoiceEntries();
+  const previousAccent = elements.voiceAccent.value;
+  const previousGender = elements.voiceGender.value;
+  const accents = [...new Set(entries.map(({ voice }) => voice.accent).filter(Boolean))].sort();
+  const genders = [...new Set(entries.map(({ voice }) => voice.gender).filter(Boolean))].sort();
+  elements.voiceAccent.innerHTML = '<option value="">All accents</option>'
+    + accents.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  elements.voiceGender.innerHTML = '<option value="">All voices</option>'
+    + genders.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  if (accents.includes(previousAccent)) elements.voiceAccent.value = previousAccent;
+  if (genders.includes(previousGender)) elements.voiceGender.value = previousGender;
+}
+
 function filterVoices() {
   const query = elements.voiceSearch.value.trim().toLowerCase();
   const accent = elements.voiceAccent.value;
   const gender = elements.voiceGender.value;
   const previous = elements.voice.value;
-  const matches = Object.entries(state.config.voices).filter(([, voice]) => (
+  const matches = allVoiceEntries().filter(({ voice }) => (
     (!query || voiceSearchText(voice).includes(query))
     && (!accent || voice.accent === accent)
     && (!gender || voice.gender === gender)
   ));
-  elements.voice.innerHTML = matches
-    .map(([value, voice]) => `<option value="${value}">${escapeHtml(voice.label)} — ${escapeHtml(voice.accent)} · ${escapeHtml(voice.style)}</option>`)
-    .join("");
+  const recent = matches.filter(({ source, voice }) => source === "saved" && voice.savedVoice.last_used_at).slice(0, 3);
+  const recentIds = new Set(recent.map(({ voice }) => voice.savedVoice.id));
+  const saved = matches.filter(({ source, voice }) => source === "saved" && !recentIds.has(voice.savedVoice.id));
+  const create = matches.filter(({ source }) => source === "create");
+  const house = matches.filter(({ source }) => source === "house");
+  const group = (label, items) => items.length ? `<optgroup label="${label}">${items.map(({ value, voice }) => (
+    `<option value="${value}">${escapeHtml(voice.label)} — ${escapeHtml(voice.accent)} · ${escapeHtml(voice.style)}</option>`
+  )).join("")}</optgroup>` : "";
+  elements.voice.innerHTML = [
+    group("Recently Used", recent),
+    group("My Voices", saved),
+    group("Create a New Voice", create),
+    group("AI Voice HQ Voices", house),
+  ].join("");
   $("#voice-count").textContent = `${matches.length} available`;
   if (!matches.length) {
     elements.voice.innerHTML = '<option value="">No matching voices</option>';
@@ -575,13 +842,13 @@ function filterVoices() {
   }
   elements.voice.disabled = false;
   elements.submit.disabled = false;
-  elements.voice.value = matches.some(([value]) => value === previous) ? previous : matches[0][0];
+  elements.voice.value = matches.some(({ value }) => value === previous) ? previous : matches[0].value;
   renderVoiceMode();
 }
 
 function renderLanguages() {
   const model = state.config.models[elements.model.value];
-  const voice = state.config.voices[elements.voice.value];
+  const voice = currentVoice();
   if (!model || !voice) return;
   const previous = elements.language.value;
   const languages = isCloneMode()
@@ -600,7 +867,7 @@ function renderLanguages() {
 }
 
 function renderVoiceMode() {
-  let voice = state.config.voices[elements.voice.value];
+  let voice = currentVoice();
   if (!voice) return;
   if (
     elements.translateMode.checked
@@ -610,9 +877,15 @@ function renderVoiceMode() {
     voice = state.config.voices.global;
   }
   const cloning = isCloneMode();
+  const newClone = isNewCloneMode();
+  const savedVoice = selectedSavedVoice();
   elements.voiceDescription.textContent = `${voice.description} · ${voice.gender} · ${(voice.use_cases || []).join(", ")}`;
-  elements.cloneControls.classList.toggle("hidden", !cloning);
-  elements.presetReady.classList.toggle("hidden", cloning);
+  elements.cloneControls.classList.toggle("hidden", !newClone);
+  elements.presetReady.classList.toggle("hidden", newClone);
+  elements.presetReady.querySelector("strong").textContent = savedVoice ? "Saved voice ready" : "Ready to generate";
+  elements.presetReady.querySelector("small").textContent = savedVoice
+    ? "Private to your account. No new recording needed."
+    : "No recording or voice sample needed.";
   $("#model-control").classList.toggle("hidden", !cloning || elements.translateMode.checked);
   const supportsDirection = ["chatterbox", "chatterbox-default"].includes(voice.engine);
   $("#advanced-controls").classList.toggle("hidden", !supportsDirection);
@@ -626,15 +899,12 @@ async function loadConfig() {
   const health = await healthResponse.json();
   await initAuth();
   initializeBilling();
-  const voices = Object.values(state.config.voices);
-  elements.voiceAccent.innerHTML += [...new Set(voices.map((voice) => voice.accent))]
-    .sort().map((value) => `<option value="${value}">${value}</option>`).join("");
-  elements.voiceGender.innerHTML += [...new Set(voices.map((voice) => voice.gender))]
-    .sort().map((value) => `<option value="${value}">${value}</option>`).join("");
   elements.model.innerHTML = Object.entries(state.config.models)
     .map(([value, model]) => `<option value="${value}">${model.label}</option>`)
     .join("");
   elements.model.value = health.device === "cpu" ? "nano" : "multilingual-v3";
+  await loadSavedVoices({ refreshPicker: false });
+  refreshVoiceFilters();
   filterVoices();
   if ([...elements.voice.options].some((option) => option.value === "heart")) elements.voice.value = "heart";
   elements.sourceLanguage.innerHTML = [
@@ -643,6 +913,10 @@ async function loadConfig() {
       (code) => `<option value="${code}">${languageName(code)}</option>`,
     ),
   ].join("");
+  $("#saved-voice-language").innerHTML = state.config.translation.target_languages
+    .map((code) => `<option value="${code}">${escapeHtml(state.config.languages[code])}</option>`)
+    .join("");
+  $("#saved-voice-language").value = "en";
   elements.targetLanguages.innerHTML = state.config.translation.target_languages
     .map((code) => `
       <label class="target-language">
@@ -824,6 +1098,7 @@ async function pollJob(jobId) {
       await loadHistory();
       await loadAccount();
       await loadProjects();
+      if (job.saved_voice_id) await loadSavedVoices();
       toast("Your voiceover is ready.");
       return;
     }
@@ -847,30 +1122,16 @@ async function pollJob(jobId) {
 async function submitGeneration(event) {
   event.preventDefault();
   const cloning = isCloneMode();
+  const newClone = isNewCloneMode();
   const translating = elements.translateMode.checked;
   const targets = selectedTargetLanguages();
-  if (cloning && !state.file) return toast("Add or record a reference voice first.", true);
+  if (newClone && !state.file) return toast("Add or record a reference voice first.", true);
   if (!elements.script.value.trim()) return toast("Write a script to generate.", true);
-  if (cloning && !$("#consent").checked) return toast("Please confirm the speaker has consented.", true);
+  if (newClone && !$("#consent").checked) return toast("Please confirm the speaker has consented.", true);
   if (translating && !targets.length) return toast("Choose at least one output language.", true);
-
-  const body = new FormData();
-  if (cloning) body.append("reference", state.file);
-  body.append("text", elements.script.value.trim());
-  body.append("voice", elements.voice.value);
-  body.append("model", elements.model.value);
-  body.append("language", elements.language.value);
-  body.append("exaggeration", $("#exaggeration").value);
-  body.append("cfg_weight", $("#cfg-weight").value);
-  body.append("temperature", $("#temperature").value);
-  body.append("speed", $("#speed").value);
-  body.append("variations", translating ? "1" : $("#variations").value);
-  body.append("consent", cloning ? "true" : "false");
-  body.append("title", $("#task-title").value.trim());
-  body.append("project_id", $("#task-project").value);
-  if (translating) {
-    body.append("source_language", elements.sourceLanguage.value);
-    body.append("target_languages", targets.join(","));
+  const saveRequested = newClone && $("#save-voice-toggle").checked;
+  if (saveRequested && !$("#saved-voice-name").value.trim()) {
+    return toast("Give this saved voice a name.", true);
   }
   elements.submit.disabled = true;
   elements.result.classList.remove("hidden");
@@ -879,13 +1140,39 @@ async function submitGeneration(event) {
     : cloning
     ? "Preparing reference audio"
     : "Preparing your voice";
-  elements.resultMessage.textContent = cloning
+  elements.resultMessage.textContent = newClone
     ? "Cleaning and validating your voice sample…"
-    : `Loading ${state.config.voices[elements.voice.value].label}…`;
+    : `Loading ${currentVoice().label}…`;
   elements.progress.style.width = "3%";
   elements.player.classList.add("hidden");
 
   try {
+    let savedVoice = selectedSavedVoice();
+    if (saveRequested) {
+      elements.resultTitle.textContent = "Saving your private voice";
+      elements.resultMessage.textContent = "Securing the normalized sample and consent record…";
+      savedVoice = await createSavedVoiceFromForm();
+      applyStudioPreset(savedVoice.default_preset || "natural");
+    }
+    const body = new FormData();
+    if (newClone && !savedVoice) body.append("reference", state.file);
+    body.append("text", elements.script.value.trim());
+    body.append("voice", savedVoice ? "clone" : elements.voice.value);
+    if (savedVoice) body.append("saved_voice_id", savedVoice.id);
+    body.append("model", elements.model.value);
+    body.append("language", elements.language.value);
+    body.append("exaggeration", $("#exaggeration").value);
+    body.append("cfg_weight", $("#cfg-weight").value);
+    body.append("temperature", $("#temperature").value);
+    body.append("speed", $("#speed").value);
+    body.append("variations", translating ? "1" : $("#variations").value);
+    body.append("consent", newClone ? "true" : "false");
+    body.append("title", $("#task-title").value.trim());
+    body.append("project_id", $("#task-project").value);
+    if (translating) {
+      body.append("source_language", elements.sourceLanguage.value);
+      body.append("target_languages", targets.join(","));
+    }
     const endpoint = translating ? "/api/generate-multilingual" : "/api/generate";
     const response = await apiFetch(endpoint, { method: "POST", body });
     const payload = await response.json();
@@ -986,6 +1273,7 @@ function bindEvents() {
   $("#signout-button").addEventListener("click", async () => {
     await state.supabase?.auth.signOut();
     state.session = null;
+    state.savedVoices = [];
     $("#signout-button").classList.add("hidden");
     $("#profile-menu").classList.add("hidden");
     renderRoute();
@@ -1034,6 +1322,30 @@ function bindEvents() {
   });
   $("#profile-menu").addEventListener("click", (event) => event.stopPropagation());
   document.addEventListener("click", () => $("#profile-menu").classList.add("hidden"));
+  [$("#manage-voices-button"), $("#profile-voices-button")].forEach((button) => {
+    button.addEventListener("click", openVoiceLibrary);
+  });
+  $("#close-voice-library").addEventListener("click", closeVoiceLibrary);
+  $("#voice-library-modal").addEventListener("click", (event) => {
+    if (event.target === $("#voice-library-modal")) closeVoiceLibrary();
+  });
+  $("#voice-library-list").addEventListener("click", handleSavedVoiceAction);
+  $("#create-voice-from-library").addEventListener("click", () => {
+    closeVoiceLibrary();
+    switchView("studio");
+    elements.voiceSearch.value = "";
+    elements.voiceAccent.value = "";
+    elements.voiceGender.value = "";
+    filterVoices();
+    elements.voice.value = "clone";
+    renderVoiceMode();
+    elements.drop.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("#voice-library-modal").classList.contains("hidden")) {
+      closeVoiceLibrary();
+    }
+  });
   $("#history-list").addEventListener("click", async (event) => {
     const button = event.target.closest(".history-play, .history-download");
     if (!button) return;
@@ -1083,6 +1395,10 @@ function bindEvents() {
   }));
   elements.drop.addEventListener("drop", (event) => setFile(event.dataTransfer.files[0]));
   elements.record.addEventListener("click", toggleRecording);
+  $("#save-voice-toggle").addEventListener("change", (event) => {
+    $("#save-voice-fields").classList.toggle("hidden", !event.target.checked);
+    if (event.target.checked) $("#saved-voice-name").focus();
+  });
   elements.script.addEventListener("input", updateScriptMeta);
   elements.translateMode.addEventListener("change", renderTranslationMode);
   elements.targetLanguages.addEventListener("change", (event) => {
@@ -1093,13 +1409,18 @@ function bindEvents() {
     updateScriptMeta();
   });
   elements.model.addEventListener("change", renderLanguages);
-  elements.voice.addEventListener("change", renderVoiceMode);
+  elements.voice.addEventListener("change", () => {
+    const savedVoice = selectedSavedVoice();
+    if (savedVoice) applyStudioPreset(savedVoice.default_preset || "natural");
+    renderVoiceMode();
+  });
   elements.voiceSearch.addEventListener("input", filterVoices);
   elements.voiceAccent.addEventListener("change", filterVoices);
   elements.voiceGender.addEventListener("change", filterVoices);
   $("#variations").addEventListener("change", updateScriptMeta);
   $$(".delivery-preset").forEach((button) => button.addEventListener("click", () => {
     applyStudioPreset(button.dataset.preset);
+    if (isNewCloneMode()) $("#saved-voice-preset").value = button.dataset.preset;
   }));
   const requestedPreset = new URLSearchParams(window.location.search).get("preset");
   if (requestedPreset) applyStudioPreset(requestedPreset);

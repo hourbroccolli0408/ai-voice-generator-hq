@@ -107,6 +107,10 @@ class Settings(BaseSettings):
         return self.data_dir / "uploads"
 
     @property
+    def saved_voices_dir(self) -> Path:
+        return self.data_dir / "saved-voices"
+
+    @property
     def resolved_database_url(self) -> str:
         if self.database_url:
             return self.database_url
@@ -116,4 +120,5 @@ class Settings(BaseSettings):
 settings = Settings()
 settings.jobs_dir.mkdir(parents=True, exist_ok=True)
 settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+settings.saved_voices_dir.mkdir(parents=True, exist_ok=True)
 

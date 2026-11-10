@@ -17,6 +17,8 @@ English cloning. Generated audio receives a PerTh provenance watermark.
 ## What is included
 
 - Browser recording and drag-and-drop audio uploads
+- Private **My Voices** library for saving, previewing, renaming, replacing, deleting, and
+  reusing authorized voice samples across projects and languages
 - Six ready-made American and British voices plus a multilingual Global Narrator
 - Automatic source-language detection and up to five translated voiceovers per job
 - Multilingual V3, English Turbo, and CPU-friendly Nano model choices
@@ -95,8 +97,11 @@ For a non-Windows shell, activate the virtual environment with
 | `VOICEFORGE_WORKERS` | `1` | Concurrent workers; keep at 1 for one GPU |
 | `HF_TOKEN` | unset | Optional Hugging Face token |
 
-Generated audio and job metadata live under `data/jobs`; normalized reference clips live
-under `data/uploads`. Remove those folders' contents when you want to erase local data.
+Generated audio and job metadata live under `data/jobs`; short-lived normalized reference
+clips live under `data/uploads`. In local-storage mode, voice samples explicitly saved to
+**My Voices** live under `data/saved-voices`; in production they use the configured private
+R2 bucket. One-time references are deleted after each job, while saved voices remain until
+their owner deletes or replaces them in the Studio.
 
 For the public beta architecture and launch sequence, see [DEPLOYMENT.md](DEPLOYMENT.md).
 Third-party model licenses and attribution are listed in
