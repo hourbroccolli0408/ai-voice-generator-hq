@@ -239,6 +239,9 @@ function renderRoute() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const isStudio = path === "/studio";
   const route = path === "/pricing" ? "pricing"
+    : path === "/changelog" ? "changelog"
+    : path === "/faq" ? "faq"
+    : path === "/about" ? "about"
     : path === "/privacy" ? "privacy"
     : path === "/terms" ? "terms"
     : "home";
@@ -257,10 +260,25 @@ function renderRoute() {
   const titles = {
     home: "AI Voice HQ — Create voices people remember",
     pricing: "Pricing — AI Voice HQ",
+    changelog: "Changelog — AI Voice HQ",
+    faq: "FAQ — AI Voice HQ",
+    about: "About — AI Voice HQ",
     privacy: "Privacy — AI Voice HQ",
     terms: "Terms — AI Voice HQ",
   };
   document.title = isStudio ? "Voiceover Studio — AI Voice HQ" : titles[route];
+  const descriptions = {
+    home: "Create natural AI voiceovers with 29 ready voices, consent-first voice cloning, multilingual delivery and transparent character pricing.",
+    pricing: "Compare transparent AI Voice HQ plans, credits and founder pricing for creators, podcasts and production teams.",
+    changelog: "Read every meaningful AI Voice HQ product release, including private reusable voices, creator projects and multilingual voiceover tools.",
+    faq: "Answers about AI Voice HQ voices, cloning consent, credits, translation, privacy, billing, downloads and commercial use.",
+    about: "Learn why AI Voice HQ is building a focused, consent-first AI voice studio for creators and production teams.",
+    privacy: "Learn how AI Voice HQ handles accounts, voice references, saved voices, payments and private generation data.",
+    terms: "Read the AI Voice HQ terms for authorized voice cloning, beta service, user content and prohibited activity.",
+  };
+  const pageDescription = descriptions[route] || descriptions.home;
+  document.querySelector('meta[name="description"]').content = pageDescription;
+  document.querySelector('meta[property="og:description"]').content = pageDescription;
   const canonicalPath = isStudio ? "/studio" : route === "home" ? "/" : `/${route}`;
   const canonicalUrl = `https://aivoicegeneratorhq.com${canonicalPath}`;
   document.querySelector('link[rel="canonical"]').href = canonicalUrl;

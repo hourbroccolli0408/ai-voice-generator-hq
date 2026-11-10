@@ -44,7 +44,7 @@ def test_public_marketing_routes(monkeypatch, tmp_path):
     importlib.reload(app.config)
     module = importlib.reload(app.main)
     with TestClient(module.app) as client:
-        for route in ("/", "/pricing", "/studio", "/privacy", "/terms"):
+        for route in ("/", "/pricing", "/studio", "/changelog", "/faq", "/about", "/privacy", "/terms"):
             response = client.get(route)
             assert response.status_code == 200
             assert "AI Voice HQ" in response.text
@@ -55,6 +55,14 @@ def test_public_marketing_routes(monkeypatch, tmp_path):
         assert 'data-marketing-preset="energetic"' in home
         assert '/studio?preset=energetic' in home
         assert "5,000 one-time starter credits" in pricing
+        assert 'content="7xRO8a0WfLZ4szslaS39Ho6IO2fLpC_tRdmE1xKIJxI"' in home
+        assert "GTM-P2TQ83B4" in home
+        assert "https://www.instagram.com/aivoicegeneratorhq/" in home
+        assert "Save your voice once. Use it everywhere." in client.get("/changelog").text
+        assert "Questions answered." in client.get("/faq").text
+        assert "Consent is product design" in client.get("/about").text
+        assert "https://aivoicegeneratorhq.com/sitemap.xml" in client.get("/robots.txt").text
+        assert "https://aivoicegeneratorhq.com/changelog" in client.get("/sitemap.xml").text
         for voice in ("heart", "emma", "michael", "george"):
             sample = client.get(f"/audio/voices/{voice}.mp3")
             assert sample.status_code == 200

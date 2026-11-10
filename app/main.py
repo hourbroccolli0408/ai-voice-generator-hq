@@ -59,7 +59,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.0", lifespan=lifespan)
 
 
 def now_iso() -> str:
@@ -1085,6 +1085,9 @@ async def generate_multilingual(
 
 @app.get("/pricing", include_in_schema=False)
 @app.get("/studio", include_in_schema=False)
+@app.get("/changelog", include_in_schema=False)
+@app.get("/faq", include_in_schema=False)
+@app.get("/about", include_in_schema=False)
 @app.get("/privacy", include_in_schema=False)
 @app.get("/terms", include_in_schema=False)
 def public_page() -> FileResponse:
