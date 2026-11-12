@@ -279,10 +279,7 @@ function renderRoute() {
   const pageDescription = descriptions[route] || descriptions.home;
   document.querySelector('meta[name="description"]').content = pageDescription;
   document.querySelector('meta[property="og:description"]').content = pageDescription;
-  const canonicalPath = isStudio ? "/studio" : route === "home" ? "/" : `/${route}`;
-  const canonicalUrl = `https://aivoicegeneratorhq.com${canonicalPath}`;
-  document.querySelector('link[rel="canonical"]').href = canonicalUrl;
-  document.querySelector('meta[property="og:url"]').content = canonicalUrl;
+  // Canonical and og:url are set by the server before JavaScript runs.
   document.querySelector('meta[property="og:title"]').content = document.title;
   if (!isStudio) window.scrollTo({ top: 0, behavior: "auto" });
 }

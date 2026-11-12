@@ -11,7 +11,7 @@ from typing import Annotated
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from langdetect import DetectorFactory, LangDetectException, detect
 
@@ -1090,9 +1090,21 @@ async def generate_multilingual(
 @app.get("/about", include_in_schema=False)
 @app.get("/privacy", include_in_schema=False)
 @app.get("/terms", include_in_schema=False)
-def public_page() -> FileResponse:
-    """Serve the single-page public site at clean, shareable URLs."""
-    return FileResponse(static_dir / "index.html", media_type="text/html")
+def public_page(request: Request) -> HTMLResponse:
+    """Declare each public page's canonical in the original HTML response."""
+    # These explicit routes use the public origin, never a proxy/preview Host or query string.
+    canonical_url = f"https://aivoicegeneratorhq.com{request.url.path}"
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    html = html.replace(
+        '<link rel="canonical" href="https://aivoicegeneratorhq.com/" />',
+        f'<link rel="canonical" href="{canonical_url}" />',
+        1,
+    ).replace(
+        '<meta property="og:url" content="https://aivoicegeneratorhq.com/" />',
+        f'<meta property="og:url" content="{canonical_url}" />',
+        1,
+    )
+    return HTMLResponse(html)
 
 
 app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
