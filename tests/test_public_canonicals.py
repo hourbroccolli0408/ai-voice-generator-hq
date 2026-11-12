@@ -54,10 +54,11 @@ def test_sitemap_pages_have_correct_canonicals_before_javascript(client):
             assert_page_url(client.get(path + suffix), canonical)
 
 
-def test_canonicals_use_public_origin_instead_of_request_host(client):
+@pytest.mark.parametrize("host", ["preview.example:8080", "preview.example/path"])
+def test_canonicals_use_public_origin_instead_of_request_host(client, host):
     for path in ("/", "/pricing", "/studio"):
         response = client.get(path, headers={
-            "host": "preview.example:8080",
+            "host": host,
             "x-forwarded-host": "untrusted.example",
             "x-forwarded-proto": "http",
         })

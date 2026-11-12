@@ -1093,7 +1093,8 @@ async def generate_multilingual(
 def public_page(request: Request) -> HTMLResponse:
     """Declare each public page's canonical in the original HTML response."""
     # These explicit routes use the public origin, never a proxy/preview Host or query string.
-    canonical_url = f"https://aivoicegeneratorhq.com{request.url.path}"
+    canonical_path = request.scope["route"].path
+    canonical_url = f"https://aivoicegeneratorhq.com{canonical_path}"
     html = (static_dir / "index.html").read_text(encoding="utf-8")
     html = html.replace(
         '<link rel="canonical" href="https://aivoicegeneratorhq.com/" />',
